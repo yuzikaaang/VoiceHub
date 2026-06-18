@@ -150,7 +150,8 @@
    Usage：按需调整
    Network：3000 ，开 Public Access
    Environment Variables：
-      DATABASE_URL=postgresql://user:password@postgres:5432/voicehub
+      DATABASE_URL=postgresql://user:password@postgres:5432/voicehub 
+      # 可能需要 ?sslmode=disable
       JWT_SECRET=your-jwt-secret-here
       # 按实际情况填写
    ```
@@ -183,7 +184,7 @@ cd VoiceHub
 
 ```yaml
 environment:
-  - DATABASE_URL=postgresql://user:password@postgres:5432/voicehub
+  - DATABASE_URL=postgresql://user:password@postgres:5432/voicehub # 可能需要 ?sslmode=disable
   - JWT_SECRET=your-jwt-secret-here # 请修改为强随机字符串
   - NODE_ENV=production
 ```
@@ -211,7 +212,8 @@ docker-compose up -d
 ```bash
 docker run -d \
   -p 3000:3000 \
-  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \
+  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \  
+  # 可能需要替换成 ?sslmode=disable
   -e JWT_SECRET="your-very-secure-jwt-secret-key" \
   -e NODE_ENV=production \
   --name voicehub \
@@ -223,7 +225,8 @@ docker run -d \
 ```bash
 docker run -d \
   -p 3000:3000 \
-  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \
+  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \  
+  # 可能需要替换成 ?sslmode=disable
   -e JWT_SECRET="your-very-secure-jwt-secret-key" \
   -e NODE_ENV=production \
   --name voicehub \
@@ -244,7 +247,8 @@ docker build --no-cache -t voicehub .
 # 运行容器
 docker run -d \
   -p 3000:3000 \
-  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \
+  -e DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require" \  
+  # 可能需要替换成 ?sslmode=disable
   -e JWT_SECRET="your-very-secure-jwt-secret-key" \
   -e NODE_ENV=production \
   --name voicehub \
@@ -255,22 +259,11 @@ docker run -d \
 
 本项目提供了针对 Ubuntu/Debian 服务器的一键部署脚本，支持自动安装 Node.js 22、配置环境变量、安装依赖和构建项目。
 
-**一键部署命令：**
+**一键命令：**
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/deploy.sh)
+sudo bash <(curl -sL https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/main.sh)
 ```
-
-**更新部署：**
-项目更新时，可使用更新脚本快速更新：
-
-```bash
-# 一键更新命令
-bash <(curl -sL https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/update.sh)
-```
-
-**日常管理：**
-部署完成后，可使用 `voicehub` 命令进行日常管理（需在部署时安装）
 
 ### 飞牛 (FnOS) 部署
 
@@ -313,6 +306,7 @@ cp .env.example .env
 ```env
 # 数据库连接地址（必填）
 DATABASE_URL="postgresql://username:password@host:port/database?sslmode=require"
+# 可能需要替换成 ?sslmode=disable
 
 # JWT 认证密钥（必填）
 JWT_SECRET="your-very-secure-jwt-secret-key"
@@ -377,6 +371,9 @@ pnpm run start
 ### 数据库管理命令
 
 ```bash
+# 新的数据库初始化
+pnpm run init-help
+
 # 生成迁移文件
 pnpm run db:generate
 
@@ -538,6 +535,7 @@ VoiceHub/
 │   │   │   ├── BackupManager.vue      # 数据库备份管理
 │   │   │   ├── BatchUpdateModal.vue   # 批量更新模态框
 │   │   │   ├── BlacklistManager.vue   # 黑名单管理
+│   │   │   ├── CardCodesManager.vue   # 点歌券管理
 │   │   │   ├── DataAnalysisPanel.vue  # 数据分析面板
 │   │   │   ├── DatabaseManager.vue    # 数据库管理
 │   │   │   ├── EmailTemplateManager.vue # 邮件模板管理
@@ -598,6 +596,7 @@ VoiceHub/
 │   │   │   ├── NeteaseUploadDialog.vue # 网易云云盘上传弹窗
 │   │   │   ├── PlaylistSelectionModal.vue # 歌单选择弹窗
 │   │   │   ├── PodcastEpisodesModal.vue # 播客节目弹窗
+│   │   │   ├── QQMusicLoginModal.vue # QQ音乐登录弹窗
 │   │   │   ├── RecentSongsModal.vue   # 最近播放弹窗
 │   │   │   ├── RequestForm.vue        # 点歌表单
 │   │   │   ├── ScheduleList.vue       # 排期列表展示
@@ -712,6 +711,7 @@ VoiceHub/
 │       ├── lyricAdapter.ts    # 歌词适配器
 │       ├── musicSources.ts    # 音乐源配置
 │       ├── musicUrl.ts        # 音乐URL处理
+│       ├── sentryUpstreamMusicErrors.ts # Sentry 上游音源错误过滤
 │       ├── neteaseApi.ts      # 网易云音乐API
 │       ├── oauth-register.ts  # OAuth注册工具
 │       ├── oauth.ts           # OAuth工具
@@ -744,6 +744,13 @@ VoiceHub/
 │   │   │   │   ├── [id].patch.ts    # 更新黑名单项
 │   │   │   │   ├── index.get.ts     # 获取黑名单列表
 │   │   │   │   └── index.post.ts    # 添加黑名单项
+│   │   │   ├── card-codes/          # 点歌券管理API
+│   │   │   │   ├── [id].put.ts      # 更新单张点歌券
+│   │   │   │   ├── create.post.ts   # 创建点歌券
+│   │   │   │   ├── export.get.ts    # 导出点歌券
+│   │   │   │   ├── index.get.ts     # 获取点歌券列表
+│   │   │   │   ├── redeem-logs.get.ts # 获取点歌券日志
+│   │   │   │   └── update.post.ts   # 批量更新点歌券
 │   │   │   ├── database/            # 数据库管理API
 │   │   │   │   ├── cleanup.post.ts  # 数据库清理
 │   │   │   │   ├── performance.get.ts # 数据库性能监控
@@ -862,6 +869,8 @@ VoiceHub/
 │   │   │   └── search.get.ts        # Bilibili视频搜索
 │   │   ├── blacklist/      # 黑名单API
 │   │   │   └── check.post.ts        # 检查黑名单
+│   │   ├── card-codes/     # 点歌券API
+│   │   │   └── validate.post.ts     # 验证点歌券可用性
 │   │   ├── meow/           # MeoW账号绑定API
 │   │   │   ├── bind.post.ts         # 绑定MeoW账号
 │   │   │   └── unbind.post.ts       # 解绑MeoW账号
@@ -870,6 +879,12 @@ VoiceHub/
 │   │   │   ├── state.post.ts        # 音乐状态管理
 │   │   │   └── websocket.ts         # 音乐WebSocket连接
 │   │   ├── native-api/     # 原生音乐API
+│   │   │   ├── lyric/               # 歌词API
+│   │   │   │   └── tx.get.ts        # 腾讯音乐歌词
+│   │   │   ├── qq/                  # QQ音乐账号API
+│   │   │   │   ├── avatar.get.ts    # 获取QQ音乐头像
+│   │   │   │   ├── check-login.post.ts # 检查扫码登录情况
+│   │   │   │   └── login-qr.get.ts  # 获取登录二维码
 │   │   │   └── search/              # 搜索API
 │   │   │       ├── tx.get.ts        # 腾讯音乐搜索
 │   │   │       └── wy.get.ts        # 网易云音乐搜索
@@ -957,6 +972,7 @@ VoiceHub/
 │   │   └── error-handler.ts # 错误处理插件
 │   ├── services/           # 业务服务层
 │   │   ├── apiLogService.ts # API日志服务
+│   │   ├── cardCodeLifecycleService.ts # 点歌券生命周期服务
 │   │   ├── cacheService.ts # 缓存服务（Redis缓存管理）
 │   │   ├── meowNotificationService.ts # MeoW通知服务
 │   │   ├── notificationService.ts # 通知服务
@@ -976,6 +992,7 @@ VoiceHub/
 │   │   ├── native_common.ts # 原生API通用工具
 │   │   ├── native_tx.ts    # 腾讯音乐原生API
 │   │   ├── native_wy.ts    # 网易云音乐原生API
+│   │   ├── qq_music_sdk.ts # QQ音乐SDK调用封装
 │   │   ├── oauth-strategies.ts # OAuth策略配置
 │   │   ├── oauth-token.ts  # OAuth令牌工具
 │   │   ├── oauth.ts        # OAuth通用工具
