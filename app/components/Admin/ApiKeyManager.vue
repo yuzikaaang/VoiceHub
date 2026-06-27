@@ -624,7 +624,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useToast } from '~/composables/useToast'
 import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 import Pagination from '~/components/UI/Common/Pagination.vue'
@@ -705,9 +705,29 @@ const availablePermissions = [
     description: '查看歌曲列表和详情'
   },
   {
+    value: 'songs:request',
+    label: '歌曲投稿',
+    description: '代表令牌所属用户提交点歌'
+  },
+  {
     value: 'songs:write',
     label: '歌曲管理',
     description: '更新歌曲状态'
+  },
+  {
+    value: 'card-codes:read',
+    label: '点歌券查询',
+    description: '查看点歌券列表和统计'
+  },
+  {
+    value: 'card-codes:write',
+    label: '点歌券管理',
+    description: '创建和更新点歌券'
+  },
+  {
+    value: 'card-codes:delete',
+    label: '点歌券删除',
+    description: '删除点歌券'
   }
 ]
 

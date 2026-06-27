@@ -1,6 +1,7 @@
 import { db } from '~/drizzle/db'
 import { cardCodes, cardCodeRedeemLogs } from '~/drizzle/schema'
 import { inArray, eq } from 'drizzle-orm'
+import { CARD_CODE_STATUSES } from '../../../card-codes/statuses'
 
 export default defineEventHandler(async (event) => {
   const user = event.context.user
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
     const updateObj: any = {}
     if (status) {
-      if (!['AVAILABLE', 'LOCKED', 'REDEEMED', 'INVALID'].includes(status)) {
+      if (!CARD_CODE_STATUSES.includes(status as any)) {
         throw createError({ statusCode: 400, message: '不支持的状态值' })
       }
       updateObj.status = status
@@ -60,17 +61,24 @@ export default defineEventHandler(async (event) => {
       updateObj.redeemedBy = null
       updateObj.redeemedAt = null
     }
+    if (status === 'INVALID') {
+      updateObj.lockedBy = null
+      updateObj.lockedAt = null
+      updateObj.redeemedBy = null
+      updateObj.redeemedAt = null
+    }
     if (typeof body.note !== 'undefined') {
       updateObj.note = typeof body.note === 'string' ? body.note.trim() || null : body.note
     }
     if (Object.keys(updateObj).length === 0) {
       throw createError({ statusCode: 400, message: '没有需要更新的字段' })
     }
+    updateObj.updatedAt = new Date()
 
     const res = await db.transaction(async (tx) => {
       const updatedRows = await tx.update(cardCodes).set(updateObj).where(inArray(cardCodes.id, normalizedIds)).returning()
 
-      if (['REDEEMED', 'AVAILABLE'].includes(status) && updatedRows.length > 0) {
+      if (status === 'REDEEMED' && updatedRows.length > 0) {
         const logsToInsert = updatedRows
           .filter((row) => {
             const before = beforeMap.get(row.id)

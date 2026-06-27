@@ -158,6 +158,22 @@
 5. **等待部署**：平台会自动构建和部署应用
 6. **访问应用**：部署完成后，您将获得一个可访问的 URL
 
+### Linux 服务器部署
+
+本项目提供了针对 Ubuntu/Debian 服务器的一键部署脚本，支持自动安装 Node.js 22、配置环境变量、安装依赖和构建项目。
+
+**一键命令：**
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/main.sh)
+```
+
+如果你需要 gh-proxy 加速，使用以下命令：
+
+```bash
+bash <(curl -sL https://gh-proxy.com/https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/main.sh)
+```
+
 ### Docker 部署
 
 VoiceHub 支持通过 Docker 进行容器化部署，提供了多种部署方式。
@@ -255,20 +271,200 @@ docker run -d \
   voicehub
 ```
 
-### Linux 服务器部署
-
-本项目提供了针对 Ubuntu/Debian 服务器的一键部署脚本，支持自动安装 Node.js 22、配置环境变量、安装依赖和构建项目。
-
-**一键命令：**
-
-```bash
-sudo bash <(curl -sL https://raw.githubusercontent.com/laoshuikaixue/VoiceHub/main/sh/main.sh)
-```
-
 ### 飞牛 (FnOS) 部署
 
 VoiceHub 现已支持飞牛 OS (FnOS) 的 `.fpk` 安装包。
 - 从 [GitHub Actions](https://github.com/laoshuikaixue/VoiceHub/actions/workflows/build-fpk.yml) 获取最新版本
+
+### Nix / NixOS
+
+VoiceHub 提供了一个 Nix flake，用于构建、开发和在 NixOS 上部署。
+
+#### 前提条件
+
+- [Nix](https://nixos.org/download)（带 flake 支持）
+- PostgreSQL 数据库
+
+#### NixOS 部署
+
+将 VoiceHub 添加为 flake input：
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    voicehub.url = "github:laoshuikaixue/VoiceHub";
+  };
+
+  outputs = { self, nixpkgs, voicehub, ... }: {
+    nixosConfigurations.my-server = nixpkgs.lib.nixosSystem {
+      specialArgs = { inherit voicehub; };
+      modules = [
+        voicehub.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+> [!TIP]
+> 启用 Binary Cache 可大幅加快构建速度，详见下方[使用 Binary Cache 加速构建](#使用-binary-cache-加速构建)。
+
+然后在 NixOS 配置中使用模块，根据数据库管理方式选择对应场景。
+
+```nix
+# 场景 A：自动配置本地 PostgreSQL
+# environmentFile 只需提供 JWT_SECRET，DATABASE_URL 由模块自动构造
+{ pkgs, inputs, config, ... }: {
+  imports = [ inputs.voicehub.nixosModules.default ];
+
+  services.voicehub = {
+    enable = true;
+    database.createLocally = true;
+    environmentFile = config.sops.templates."voicehub-env".path;
+    runDeployScript = true;
+  };
+
+  sops.templates."voicehub-env" = {
+    content = ''
+      JWT_SECRET=${config.sops.placeholder."voicehub/jwt-secret"}
+    '';
+  };
+}
+```
+
+```nix
+# 场景 B：手动管理数据库（Neon / Docker / 远程 PG）
+# environmentFile 需同时提供 DATABASE_URL 和 JWT_SECRET
+{ pkgs, inputs, config, ... }: {
+  imports = [ inputs.voicehub.nixosModules.default ];
+
+  services.voicehub = {
+    enable = true;
+    environmentFile = config.sops.templates."voicehub-env".path;
+    runDeployScript = true;
+  };
+
+  sops.templates."voicehub-env" = {
+    content = ''
+      DATABASE_URL=${config.sops.placeholder."voicehub/database-url"}
+      JWT_SECRET=${config.sops.placeholder."voicehub/jwt-secret"}
+    '';
+  };
+}
+```
+
+环境文件 (`sops.templates."voicehub-env".content`) 格式参考：
+
+```env
+DATABASE_URL=postgresql://voicehub:secret@localhost:5432/voicehub
+JWT_SECRET=your-very-secure-jwt-secret-key
+NUXT_PUBLIC_HOST=https://voicehub.example.com
+```
+
+推荐使用 [sops-nix](https://github.com/Mic92/sops-nix) 管理 secrets，避免明文存储在 Nix store 中。
+
+模块会自动设置 `DynamicUser`、`ProtectSystem=strict`、`NoNewPrivileges` 等安全加固。
+防火墙默认不开放端口，在配置中启用以允许外部访问：
+
+```nix
+services.voicehub.openFirewall = true;
+```
+
+应用配置并部署：
+
+```bash
+sudo nixos-rebuild switch --flake .#my-server
+```
+
+查看服务状态和日志：
+
+```bash
+systemctl status voicehub
+journalctl -u voicehub -f
+```
+
+默认监听 `0.0.0.0:3000`，可通过 `services.voicehub.host` 和 `services.voicehub.port` 修改。
+
+#### 使用 Binary Cache 加速构建
+
+VoiceHub CI 会将构建产物推送到 [Cachix](https://cachix.org) binary cache，
+下游用户可直接下载预构建的 `pnpmDeps` 和 `voicehub` 包，跳过本地构建。
+
+在你的 flake 中添加 `nixConfig` 以启用：
+
+```nix
+{
+  nixConfig = {
+    extra-substituters = [ "https://voicehub.cachix.org" ];
+    extra-trusted-public-keys = [ "voicehub.cachix.org-1:CKw4/RvZy5c0WVpyo5ZyLbJgdpHZ/+epofIwGOeIOhU=" ];
+  };
+  inputs = {
+    voicehub.url = "github:laoshuikaixue/VoiceHub";
+  };
+}
+```
+
+> [!IMPORTANT]
+> 请勿通过 `follows` 覆盖 VoiceHub 的 `nixpkgs` input。缓存中的产物使用
+> VoiceHub 自带的 nixpkgs 构建，替换后 hash 不同，无法命中缓存。
+
+#### 其他功能
+
+##### 开发环境
+
+进入开发 shell（自动提供 Node.js、pnpm、PostgreSQL 客户端）：
+
+```bash
+nix develop
+```
+
+然后在 shell 内：
+
+```bash
+cp .env.example .env   # 配置 DATABASE_URL + JWT_SECRET
+pnpm install
+pnpm run dev           # 启动开发服务器 (port 3000)
+```
+
+##### 构建
+
+```bash
+nix build              # 产出 result/bin/voicehub
+```
+
+构建产物可以直接运行（需要 `DATABASE_URL` 等环境变量）：
+
+```bash
+DATABASE_URL="postgresql://..." JWT_SECRET="..." ./result/bin/voicehub
+```
+
+或使用附带的环境文件：
+
+```bash
+nix run .#default --impure
+```
+
+> `nix run` 需要设置 `DATABASE_URL` 环境变量，否则会启动失败。
+
+##### 更新 pnpm 依赖哈希
+
+当 `pnpm-lock.yaml` 更新后，需要同步 `flake.nix` 中的 `pnpmDeps` 哈希。仓库已配置 GitHub Actions，会在 `pnpm-lock.yaml` 或 `flake.nix` 变更时自动计算新哈希并提交回触发分支。
+
+如果需要在本地手动更新，可以先将 `flake.nix` 中 `pnpmDeps.hash` 临时改为空字符串，然后运行：
+
+```bash
+nix build .#voicehub
+```
+
+Nix 会因固定输出哈希不匹配而失败，并输出 `got: sha256-...`，将该值写回 `pnpmDeps.hash` 即可。也可以使用 impure 构建辅助命令（需要网络和已安装的 pnpm）：
+
+```bash
+nix run .#build                # 在项目目录中执行，生成 .output 目录
+```
+
+---
 
 ### 本地开发部署
 
@@ -515,6 +711,13 @@ VoiceHub 实现了细粒度的权限控制系统：
 
 ```
 VoiceHub/
+├── .github/                   # GitHub 配置目录
+│   └── workflows/             # GitHub Actions 工作流
+│       ├── build-fpk.yml      # FnOS FPK 安装包构建
+│       ├── docker-build.yml   # Docker 镜像构建
+│       ├── docker-postgres.yml # PostgreSQL Docker 镜像构建
+│       ├── nix.yml            # Nix 构建校验
+│       └── update-nix-pnpm-hash.yml # 自动同步 pnpmDeps 哈希
 ├── app/                       # Nuxt 4 应用主目录
 │   ├── app.vue                # 应用入口文件
 │   ├── assets/                # 静态资源目录
@@ -667,6 +870,8 @@ VoiceHub/
 │   │   ├── db.ts               # 数据库连接
 │   │   ├── schema.ts           # 数据库模型
 │   │   └── migrations/         # 数据库迁移文件
+│   │       ├── *.sql           # Drizzle 迁移脚本
+│   │       └── meta/           # Drizzle 迁移快照
 │   ├── layouts/               # 布局组件
 │   │   └── default.vue         # 默认布局模板
 │   ├── middleware/            # 中间件
@@ -747,6 +952,7 @@ VoiceHub/
 │   │   │   ├── card-codes/          # 点歌券管理API
 │   │   │   │   ├── [id].put.ts      # 更新单张点歌券
 │   │   │   │   ├── create.post.ts   # 创建点歌券
+│   │   │   │   ├── delete.post.ts   # 删除点歌券
 │   │   │   │   ├── export.get.ts    # 导出点歌券
 │   │   │   │   ├── index.get.ts     # 获取点歌券列表
 │   │   │   │   ├── redeem-logs.get.ts # 获取点歌券日志
@@ -901,8 +1107,15 @@ VoiceHub/
 │   │   │   ├── settings.post.ts     # 更新通知设置
 │   │   │   └── settings.ts          # 获取通知设置
 │   │   ├── open/           # 开放API（无需认证）
+│   │   │   ├── card-codes/          # 点歌券开放API
+│   │   │   │   └── delete.post.ts   # 删除点歌券（兼容不支持 DELETE body 的代理）
+│   │   │   ├── card-codes.delete.ts # 删除点歌券
+│   │   │   ├── card-codes.get.ts    # 获取点歌券列表
+│   │   │   ├── card-codes.patch.ts  # 更新点歌券
+│   │   │   ├── card-codes.post.ts   # 创建点歌券
 │   │   │   ├── songs/               # 歌曲相关开放API
-│   │   │   │   └── mark-played.post.ts # 标记歌曲已播放（供外部调用）
+│   │   │   │   ├── mark-played.post.ts # 标记歌曲已播放（供外部调用）
+│   │   │   │   └── request.post.ts  # 使用个人集成令牌投稿歌曲
 │   │   │   ├── schedules.get.ts     # 获取公开排期
 │   │   │   └── songs.get.ts         # 获取公开歌曲列表
 │   │   ├── play-times/     # 播放时间API
@@ -947,6 +1160,11 @@ VoiceHub/
 │   │   │   │   ├── disable.post.ts  # 关闭双重认证
 │   │   │   │   ├── enable.post.ts   # 开启双重认证
 │   │   │   │   └── generate.post.ts # 生成双重认证密钥
+│   │   │   ├── api-keys/          # 个人集成令牌API
+│   │   │   │   ├── [id].delete.ts # 删除个人集成令牌
+│   │   │   │   ├── [id]/logs.get.ts # 获取个人集成令牌调用日志
+│   │   │   │   ├── index.get.ts   # 获取个人集成令牌列表
+│   │   │   │   └── index.post.ts  # 创建个人集成令牌
 │   │   │   ├── email/               # 用户邮箱管理
 │   │   │   │   ├── bind.post.ts     # 绑定邮箱
 │   │   │   │   ├── resend-verification.post.ts # 重发验证邮件
@@ -972,17 +1190,20 @@ VoiceHub/
 │   │   └── error-handler.ts # 错误处理插件
 │   ├── services/           # 业务服务层
 │   │   ├── apiLogService.ts # API日志服务
+│   │   ├── cardCodeDeleteService.ts # 点歌券删除服务
 │   │   ├── cardCodeLifecycleService.ts # 点歌券生命周期服务
 │   │   ├── cacheService.ts # 缓存服务（Redis缓存管理）
 │   │   ├── meowNotificationService.ts # MeoW通知服务
 │   │   ├── notificationService.ts # 通知服务
 │   │   ├── securityService.ts # 安全服务
+│   │   ├── songRequestService.ts # 点歌投稿服务
 │   │   ├── smtpService.ts  # SMTP邮件服务
 │   │   └── userService.ts # 用户服务
 │   ├── utils/              # 服务端工具函数
 │   │   ├── auth.ts         # 认证工具函数
 │   │   ├── bilibiliWbi.ts  # Bilibili WBI签名工具
 │   │   ├── cache-helpers.ts # 缓存辅助工具
+│   │   ├── card-code-delete-handler.ts # 点歌券删除开放API处理器
 │   │   ├── database-health.ts # 数据库健康检查
 │   │   ├── database-manager.ts # 数据库管理工具
 │   │   ├── geo.ts          # 地理位置工具
@@ -996,6 +1217,8 @@ VoiceHub/
 │   │   ├── oauth-strategies.ts # OAuth策略配置
 │   │   ├── oauth-token.ts  # OAuth令牌工具
 │   │   ├── oauth.ts        # OAuth通用工具
+│   │   ├── apiKeyUtils.ts   # API Key生成、哈希与校验
+│   │   ├── ip-utils.ts      # IP地址工具
 │   │   ├── open-api-cache.ts # 开放API缓存
 │   │   ├── permissions.js  # 权限系统配置
 │   │   ├── redis.ts        # Redis连接和操作工具
@@ -1021,6 +1244,8 @@ VoiceHub/
 ├── docker-compose.yml     # Docker编排文件
 ├── Dockerfile             # Docker构建文件
 ├── drizzle.config.ts      # Drizzle配置文件
+├── flake.lock             # Nix flake锁定文件
+├── flake.nix              # Nix构建与NixOS模块配置
 ├── LICENSE                # 开源许可证文件
 ├── netlify.toml           # Netlify部署配置
 ├── nuxt.config.ts         # Nuxt 4主配置文件
@@ -1859,6 +2084,7 @@ Thanks goes to these wonderful people:
 - [Sound-of-experiment - 实验之声广播站点歌系统](https://github.com/ljk743121/Sound-of-experiment) (哔哩哔哩音源搜索功能参考)
 - [Bilibili-audio-extraction](https://github.com/rio4raki/Bilibili-audio-extraction) (哔哩哔哩音频流获取参考)
 - [SPlayer](https://github.com/imsyy/SPlayer)
+- [SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next)
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics)
 - [official-website - Sparkinit](https://github.com/Sparkinit/official-website)
 - [MusicAPI-rrvenn](https://music.rrvenn.cn)
