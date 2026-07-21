@@ -181,7 +181,7 @@
                 </label>
 
                 <label
-                  v-if="schoolLogoPrintUrl"
+                  v-if="schoolLogoPrintDisplayUrl"
                   class="flex items-center gap-3 cursor-pointer group select-none"
                 >
                   <div
@@ -301,8 +301,9 @@
                     <div class="logo-divider" />
                     <!-- 学校logo -->
                     <img
-                      v-if="settings.showSchoolLogo && schoolLogoPrintUrl"
-                      :src="schoolLogoPrintUrl"
+                      v-if="settings.showSchoolLogo && schoolLogoPrintDisplayUrl"
+                      :src="schoolLogoPrintDisplayUrl"
+                      :data-original-src="schoolLogoPrintUrl"
                       alt="学校Logo"
                       class="school-logo-print"
                     />
@@ -449,7 +450,7 @@ const { canPrintSchedule } = usePermissions()
 const { getAuthConfig } = useAuth()
 
 // 站点配置
-const { siteTitle, schoolLogoPrintUrl, initSiteConfig } = useSiteConfig()
+const { siteTitle, schoolLogoPrintUrl, schoolLogoPrintDisplayUrl, initSiteConfig } = useSiteConfig()
 
 // 配置
 const config = useRuntimeConfig()
@@ -775,8 +776,7 @@ const hasMultiplePlayTimes = (dateGroup) => {
 const loadSchedules = async () => {
   loading.value = true
   try {
-    // 添加 bypass_cache=true 参数，确保获取最新的排期数据
-    const data = await $fetch('/api/songs/public?bypass_cache=true', {
+    const data = await $fetch('/api/songs/public', {
       ...getAuthConfig()
     })
     // API直接返回排期数组，不是包装在schedules属性中

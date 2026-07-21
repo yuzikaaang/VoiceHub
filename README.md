@@ -105,7 +105,7 @@
 - **Drizzle ORM**：现代化数据库ORM，提供类型安全的数据库操作和高性能查询
 - **Neon Database**：Serverless PostgreSQL数据库，支持自动启停和无缝扩展
 - **PostgreSQL**：关系型数据库，支持复杂查询和事务处理
-- **Redis**：高性能缓存数据库，提升系统响应速度（可选，暂不推荐，可能存在潜在的问题）
+- **Redis**：可选的分布式短期状态服务，仅用于验证码、限流和临时安全状态
 - **JWT**：标准JWT认证机制，支持24小时token有效期
 - **bcrypt**：密码加密，安全的哈希算法
 - **Multer**：文件上传处理，支持多种存储方式
@@ -118,7 +118,7 @@
 - **后端**：使用 Nuxt Server API 构建 RESTful API 服务
 - **数据库**：使用 Drizzle ORM + Neon Database，提供类型安全和高性能的数据库操作
 - **认证**：标准 JWT 认证系统
-- **缓存**：可选的 Redis 缓存层，提升系统响应速度
+- **数据读取**：PostgreSQL 是唯一业务数据源，歌曲、排期和用户状态不使用 Redis 缓存
 - **部署**：支持 Vercel、Netlify、EdgeOne 等 Serverless 平台一键部署，并提供 Docker、Linux 一键脚本及飞牛 FnOS (fpk安装包) 等多种部署方式
 
 ## 部署指南
@@ -472,7 +472,7 @@ nix run .#build                # 在项目目录中执行，生成 .output 目�
 
 - Node.js 20+
 - PostgreSQL 数据库（推荐使用 Neon）
-- Redis 数据库（可选，暂不推荐）
+- Redis 数据库（可选；多实例或 Serverless 部署建议配置）
 
 #### 快速开始
 
@@ -666,19 +666,37 @@ VoiceHub 实现了细粒度的权限控制系统：
 
 ## 环境变量说明
 
-| 变量名                 | 必填 | 说明                                                 | 示例值                                                                                                                                          |
-| ---------------------- | ---- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| DATABASE_URL           | 是   | PostgreSQL数据库连接字符串                           | `postgresql://username:password@host:port/database?sslmode=require`                                                                             |
-| JWT_SECRET             | 是   | JWT令牌签名密钥，建议使用强随机字符串                | `your-very-secure-jwt-secret-key`                                                                                                               |
-| NODE_ENV               | 否   | 运行环境，development或production                    | `production`                                                                                                                                    |
-| REDIS_URL              | 否   | Redis缓存服务连接字符串，填写后自动启用Redis缓存功能 | `redis://default:password@host:port`                                                                                                            |
-| NITRO_PRESET           | 否   | Nitro预设                                            | `vercel`                                                                                                                                        |
-| NUXT_PUBLIC_HOST       | 否   | 用于 CORS 和反向代理的主机名验证                     | `your-app.com`                                                                                                                                  |
-| NUXT_PUBLIC_SEO_CONFIG | 否   | 用于自定义 PWA/SEO 配置的 JSON 字符串                | `{"title":"VoiceHub校园广播站点歌系统","shortName":"校园广播","description":"校园广播站点歌系统 - 让你的声音被听见","logo":"/images/logo.png"}` |
+| 变量名                 | 必填 | 说明                                                    | 示例值                                                                                                                                          |
+| ---------------------- | ---- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| DATABASE_URL           | 是   | PostgreSQL数据库连接字符串                              | `postgresql://username:password@host:port/database?sslmode=require`                                                                             |
+| JWT_SECRET             | 是   | JWT令牌签名密钥，建议使用强随机字符串                   | `your-very-secure-jwt-secret-key`                                                                                                               |
+| NODE_ENV               | 否   | 运行环境，development或production                       | `production`                                                                                                                                    |
+| REDIS_URL              | 否   | Redis短期状态服务连接字符串，用于验证码、限流和临时锁定 | `redis://default:password@host:port`                                                                                                            |
+| REDIS_KEY_PREFIX       | 否   | Redis键命名空间，多环境共用Redis时应分别设置            | `voicehub:v2:`                                                                                                                                  |
+| NITRO_PRESET           | 否   | Nitro预设                                               | `vercel`                                                                                                                                        |
+| NUXT_PUBLIC_HOST       | 否   | 用于 CORS 和反向代理的主机名验证                        | `your-app.com`                                                                                                                                  |
+| NUXT_PUBLIC_SEO_CONFIG | 否   | 用于自定义 PWA/SEO 配置的 JSON 字符串                   | `{"title":"VoiceHub校园广播站点歌系统","shortName":"校园广播","description":"校园广播站点歌系统 - 让你的声音被听见","logo":"/images/logo.png"}` |
+
+Redis 不参与歌曲、排期、点赞或用户资料缓存。迁移旧部署时可先执行 dry-run：
+
+```bash
+pnpm run redis:scan-legacy
+```
+
+确认 Redis 数据库为 VoiceHub 独占后，才可显式执行清理。PowerShell 示例：
+
+```powershell
+$env:REDIS_LEGACY_CLEANUP_CONFIRM = 'VOICEHUB'
+pnpm run redis:scan-legacy -- --apply
+```
+
+共享 Redis 默认不会自动删除；禁止使用 `FLUSHDB`。
 
 ## OAuth 配置
 
 系统支持通过 OAuth 提供商（如 GitHub、Casdoor、Google 等）快速创建账户和登录：
+
+OAuth 运行时配置统一保存在管理员后台数据库中；环境变量仅用于兼容旧部署和后台一键导入，导入后以后台保存值为准。
 
 1. **在管理员后台配置**：
 
@@ -690,6 +708,7 @@ VoiceHub 实现了细粒度的权限控制系统：
   - GitHub：Client ID / Secret
   - Casdoor：Server URL / Client ID / Secret / Organization Name
   - Google：Client ID / Secret
+  - 聚合登陆：AppID / AppKey / 接口地址，并可同时启用 QQ、微信、支付宝、抖音
   - 第三方 OAuth2：完整的 OAuth 端点和字段映射
 
 2. **OAuth 提供商配置**：
@@ -728,6 +747,7 @@ VoiceHub/
 │   │       ├── components.css      # 组件样式
 │   │       ├── lyric-player.module.css  # 歌词播放器样式
 │   │       ├── main.css           # 主样式文件
+│   │       ├── markdown.css       # Markdown样式
 │   │       ├── mobile-admin.css   # 移动端管理样式
 │   │       ├── print-fix.css      # 打印样式修复
 │   │       ├── sf-pro-icons.css   # SF Pro图标字体
@@ -919,6 +939,7 @@ VoiceHub/
 │       ├── bilibiliSource.ts  # 哔哩哔哩音源
 │       ├── debounce.ts       # 防抖工具
 │       ├── lyricAdapter.ts    # 歌词适配器
+│       ├── markdown.js        # Markdown工具
 │       ├── musicSources.ts    # 音乐源配置
 │       ├── musicUrl.ts        # 音乐URL处理
 │       ├── sentryUpstreamMusicErrors.ts # Sentry 上游音源错误过滤
@@ -1199,12 +1220,12 @@ VoiceHub/
 │   │   ├── 00.sentry.ts    # Sentry错误追踪插件
 │   │   ├── 01.pre-warm-ssr.ts # SSR预热插件
 │   │   ├── error-handler.ts # 错误处理插件
+│   │   ├── redis-lifecycle.ts # Redis短期状态连接生命周期
 │   │   └── time-sync.ts    # 服务器时间同步插件
 │   ├── services/           # 业务服务层
 │   │   ├── apiLogService.ts # API日志服务
 │   │   ├── cardCodeDeleteService.ts # 点歌券删除服务
 │   │   ├── cardCodeLifecycleService.ts # 点歌券生命周期服务
-│   │   ├── cacheService.ts # 缓存服务（Redis缓存管理）
 │   │   ├── meowNotificationService.ts # MeoW通知服务
 │   │   ├── notificationService.ts # 通知服务
 │   │   ├── oauthConfigService.ts # OAuth提供商配置与状态服务
@@ -1216,9 +1237,8 @@ VoiceHub/
 │   │   ├── apiKeyUtils.ts  # API Key生成、哈希与校验
 │   │   ├── auth.ts         # 认证工具函数
 │   │   ├── bilibiliWbi.ts  # Bilibili WBI签名工具
-│   │   ├── cache-helpers.ts # 缓存辅助工具
 │   │   ├── captcha.ts      # 图形验证码生成工具
-│   │   ├── captchaStore.ts # 验证码存储工具
+│   │   ├── captchaStore.ts # 分布式短期状态与验证码哈希存储
 │   │   ├── card-code-delete-handler.ts # 点歌券删除开放API处理器
 │   │   ├── database-health.ts # 数据库健康检查
 │   │   ├── database-manager.ts # 数据库管理工具
@@ -1234,11 +1254,10 @@ VoiceHub/
 │   │   ├── oauth-strategies.ts # OAuth策略配置
 │   │   ├── oauth-token.ts  # OAuth令牌工具
 │   │   ├── oauth.ts        # OAuth通用工具
-│   │   ├── open-api-cache.ts # 开放API缓存
 │   │   ├── permissions.js  # 权限系统配置
 │   │   ├── qq_music_sdk.ts # QQ音乐SDK调用封装
 │   │   ├── rateLimiter.ts  # 请求速率限制工具
-│   │   ├── redis.ts        # Redis连接和操作工具
+│   │   ├── redis.ts        # 可选Redis连接与命名空间工具
 │   │   ├── request-utils.ts # 请求处理通用工具
 │   │   ├── serverTime.ts   # 服务器时间管理工具
 │   │   ├── siteUtils.ts    # 站点工具函数
@@ -1246,13 +1265,13 @@ VoiceHub/
 │   │   ├── submissionLimit.ts # 投稿限额工具
 │   │   ├── system-settings-defaults.ts # 系统设置默认值
 │   │   ├── telemetry.ts    # 遥测与错误追踪工具
-│   │   ├── twoFactorStore.ts # 双重认证存储工具
 │   │   ├── user.ts         # 用户相关工具函数
 │   │   ├── webauthn-config.ts # WebAuthn配置工具
 │   │   └── webauthn-token.ts # WebAuthn令牌工具
 │   └── tsconfig.json       # 服务端TypeScript配置
 ├── scripts/               # 构建、部署与数据库维护脚本
-│   └── build.js           # 输出环境变量解析结果并执行 Nuxt 构建
+│   ├── build.js           # 输出环境变量解析结果并执行 Nuxt 构建
+│   └── redis-scan-legacy.js # 旧Redis业务缓存键dry-run扫描工具
 ├── types/                 # TypeScript类型定义
 │   ├── global.d.ts         # 全局类型定义
 │   └── index.ts            # 通用类型定义
