@@ -17,6 +17,16 @@ export type MusicUrlResolveOptions = {
   mediaId?: string
   excludeSources?: string[]
   ignoreProvidedUrl?: boolean
+  musicInfo?: MusicTrackMeta
+}
+
+/**
+ * 歌曲元信息
+ */
+export type MusicTrackMeta = {
+  name?: string
+  artist?: string
+  album?: string
 }
 
 export type MusicUrlResolveResult = {
@@ -28,6 +38,149 @@ export type MusicUrlResolveResult = {
 
 export const INVALID_QQ_AUDIO_URL_SUFFIX = '/2149972737147268278.mp3'
 
+// 星海音源（咪咕备用通道）：由国内服务器代理获取链接，规避咪咕对海外 IP 的屏蔽
+const XINGHAI_BASE_URL = 'https://yy.zddyr.top/lx/api/'
+// 星海播放链接缓存（10 分钟），规避星海后端每分钟 10 次的限流
+const XINGHAI_CACHE_TTL = 10 * 60 * 1000
+// 星海请求滑动窗口限流（60 秒内最多 8 次，留余量规避后端 10 次/分钟限制）
+const XINGHAI_RATE_LIMIT_MAX = 8
+const XINGHAI_RATE_LIMIT_WINDOW = 60 * 1000
+const xinghaiUrlCache = new Map<string, { url: string; expireAt: number }>()
+// 同 key 请求合并，避免并发重复请求
+const xinghaiInflight = new Map<string, Promise<string | null>>()
+// 最近请求时间戳（滑动窗口限流）
+const xinghaiRequestTimes: number[] = []
+
+/**
+ * 通过星海音源获取咪咕播放链接
+ */
+const miguQuality = {
+  // 音质数值 → 服务端 toneFlag 映射
+  flagMap: { 1: 'PQ', 2: 'HQ', 3: 'SQ', 4: 'ZQ24' } as Record<number, string>,
+  upgradeUrl(url: string, flag: number) {
+    url = decodeURIComponent(url);
+    switch (flag) {
+      case 2: //HQ
+        return url.replace('MP3_128_16_Stero', 'MP3_320_16_Stero')
+      case 3: //SQ
+        return url.replace('标清高清/MP3_128_16_Stero', '歌曲下载/flac').replace('.mp3', '.flac');
+      case 4: //ZQ24 / ZQ
+        return url.replace('标清高清/MP3_128_16_Stero', '歌曲下载/flac_24bit').replace('.mp3', '.flac');
+      case 1:
+      default:
+        return url
+    }
+  },
+  // 高音质资源可能缺失（404），按降级链逐级回退：ZQ24 → SQ → HQ → PQ
+  fallbackChain: { 4: [4, 3, 2, 1], 3: [3, 2, 1], 2: [2, 1], 1: [1] } as Record<number, number[]>,
+  /**
+   * 按降级链逐级升级并探测，返回第一个可用的链接
+   */
+  async resolveAvailableUrl(rawUrl: string, flag: number): Promise<string> {
+    const base = decodeURIComponent(rawUrl)
+    const chain = this.fallbackChain[flag] || [1]
+    for (const level of chain) {
+      const candidate = this.upgradeUrl(rawUrl, level)
+      // PQ 为接口直出链接，无需探测
+      if (level === 1 || (await isMiguUrlAvailable(candidate))) {
+        if (level !== flag) {
+          console.warn(`[musicUrl] 咪咕 ${flag} 音质链接不可用，已降级为 ${level}`)
+        }
+        return candidate
+      }
+    }
+    return base
+  }
+}
+
+/**
+ * HEAD 探测链接可用性；跨域受限或网络异常时保守视为可用，避免误降级
+ */
+async function isMiguUrlAvailable(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
+    return res.ok
+  } catch {
+    return true
+  }
+}
+
+const fetchXinghaiMiguUrl = async (
+  contentId: string,
+  meta?: MusicTrackMeta,
+  miguFlag?: number
+): Promise<string | null> => {
+  // 缓存需区分音质，避免不同音质请求互相命中返回错误音质的链接
+  const cacheKey = `migu:${contentId}:${miguFlag || 1}`
+  const cached = xinghaiUrlCache.get(cacheKey)
+  if (cached && cached.expireAt > Date.now()) {
+    return cached.url
+  }
+
+  // 清理过期缓存条目，避免无界增长
+  const now = Date.now()
+  for (const [key, entry] of xinghaiUrlCache) {
+    if (entry.expireAt <= now) {
+      xinghaiUrlCache.delete(key)
+    }
+  }
+
+  // 并发合并：同一歌曲的并发请求只发一次
+  const inflight = xinghaiInflight.get(cacheKey)
+  if (inflight) {
+    return inflight
+  }
+
+  // 滑动窗口限流：超限时直接失败，避免触发星海 429
+  const windowStart = now - XINGHAI_RATE_LIMIT_WINDOW
+  while (xinghaiRequestTimes.length > 0 && xinghaiRequestTimes[0] < windowStart) {
+    xinghaiRequestTimes.shift()
+  }
+  if (xinghaiRequestTimes.length >= XINGHAI_RATE_LIMIT_MAX) {
+    console.warn('[musicUrl] 星海音源请求过于频繁，跳过本次请求')
+    return null
+  }
+
+  const promise = (async (): Promise<string | null> => {
+    try {
+      xinghaiRequestTimes.push(Date.now())
+      const params: Record<string, string> = {
+        source: 'migu',
+        songmid: contentId,
+        quality: '128k'
+      }
+      if (meta?.name) params.name = meta.name
+      if (meta?.artist) params.singer = meta.artist
+      if (meta?.album) params.albumName = meta.album
+
+      const query = Object.entries(params)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&')
+      const response: any = await $fetch(`${XINGHAI_BASE_URL}?${query}`, {
+        timeout: 8000
+      })
+
+      if (response?.code === 200 && response?.url) {
+        let url = await miguQuality.resolveAvailableUrl(response.url.split('?')[0], miguFlag || 1);
+        if (url.startsWith('http://')) {
+          url = url.replace('http://', 'https://')
+        }
+        xinghaiUrlCache.set(cacheKey, { url, expireAt: Date.now() + XINGHAI_CACHE_TTL })
+        return url
+      }
+    } catch (error) {
+      console.warn('[musicUrl] 星海音源获取咪咕播放链接失败:', error)
+    }
+    return null
+  })()
+
+  xinghaiInflight.set(cacheKey, promise)
+  promise.finally(() => {
+    xinghaiInflight.delete(cacheKey)
+  })
+  return promise
+}
+
 const musicUrlSourceCache = new Map<string, string>()
 
 const normalizeCacheUrl = (url: string) => {
@@ -37,7 +190,7 @@ const normalizeCacheUrl = (url: string) => {
 export const isKnownInvalidQqAudioUrl = (url: string | null | undefined) => {
   if (!url) return false
   const normalizedUrl = normalizeCacheUrl(url)
-  const urlWithoutParams = normalizedUrl.split('?')[0].split('#')[0];
+  const urlWithoutParams = normalizedUrl.split('?')[0].split('#')[0]
   return urlWithoutParams.endsWith(INVALID_QQ_AUDIO_URL_SUFFIX)
 }
 
@@ -230,10 +383,69 @@ export async function getMusicUrlResult(
       ? 'netease'
       : platform === 'tencent'
         ? 'tencent'
-        : null
+        : platform === 'migu'
+          ? 'migu'
+          : null
 
   if (!endpoint) {
     throw new Error('不支持的音乐平台')
+  }
+
+  // 咪咕音乐特殊处理
+  if (platform === 'migu') {
+    // 服务器位于海外时直接使用星海音源（咪咕官方接口屏蔽海外 IP）
+    const { isServerInChina, checkServerLocation } = useMusicSources()
+    if (isServerInChina.value === null) {
+      await checkServerLocation()
+    }
+    if (isServerInChina.value === false) {
+      const xinghaiUrl = await fetchXinghaiMiguUrl(String(musicId), options?.musicInfo, quality)
+      if (xinghaiUrl) {
+        rememberMusicUrlSource(xinghaiUrl, 'xinghai')
+        return {
+          url: xinghaiUrl,
+          source: 'xinghai'
+        }
+      }
+      throw new Error('咪咕音乐播放链接获取失败（星海音源不可用）')
+    }
+
+    try {
+      // 服务端以 PQ 取链后按 toneFlag 升级音质路径，客户端不再二次处理
+      const miguResponse: any = await $fetch('/api/native-api/migu/playurl', {
+        params: {
+          contentId: String(musicId),
+          toneFlag: miguQuality.flagMap[quality as number] || 'PQ'
+        },
+        timeout: 10000
+      })
+
+      if (miguResponse?.success && miguResponse?.url) {
+        let miguUrl = miguResponse.url
+        // 与星海分支保持一致，避免 http 链接在 https 部署下被混合内容策略拦截
+        if (miguUrl.startsWith('http://')) {
+          miguUrl = miguUrl.replace('http://', 'https://')
+        }
+        rememberMusicUrlSource(miguUrl, 'migu')
+        return {
+          url: miguUrl,
+          source: 'migu'
+        }
+      }
+    } catch (error) {
+      console.error('[musicUrl] 咪咕播放链接获取失败:', error)
+    }
+
+    // 官方接口失败时回退星海音源
+    const xinghaiUrl = await fetchXinghaiMiguUrl(String(musicId), options?.musicInfo, quality)
+    if (xinghaiUrl) {
+      rememberMusicUrlSource(xinghaiUrl, 'xinghai')
+      return {
+        url: xinghaiUrl,
+        source: 'xinghai'
+      }
+    }
+    throw new Error('咪咕音乐播放链接获取失败')
   }
 
   for (const candidateQuality of qualityCandidates) {
