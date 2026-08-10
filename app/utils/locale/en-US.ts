@@ -28,12 +28,12 @@ export const siteConfig = {
   schoolLogoPrintPlaceholder: 'Enter the print page school logo URL',
 
   submissionLogic: 'Request Rules',
-  enableCollaborative: 'Enable Collaborative Requests',
+  enableCollaborative: 'Enable Collaboration',
   enableCollaborativeDesc: 'Allow users to add collaborators and submit requests together',
   enableRemarks: 'Enable Request Remarks',
   enableRemarksDesc: 'Allow users to add public or admin-only notes when submitting requests',
   enableCardCodeRequests: 'Enable Request Cards',
-  enableCardCodeLimitBypass: 'Allow request cards to bypass submission limits',
+  enableCardCodeLimitBypass: 'Request cards bypass limits',
   enableCardCodeLimitBypassDesc: 'Valid request-card submissions do not use regular quota and remain available after daily, weekly, or monthly limits are reached.',
   enableCardCodeRequestsDesc: 'Allow users to use request cards when submitting song requests',
   requireCardCodeForRequests: 'Require Request Cards',
@@ -58,7 +58,7 @@ export const siteConfig = {
   captchaType: 'CAPTCHA Type',
   captchaGraphic: 'Image CAPTCHA',
   captchaTurnstile: 'Cloudflare Turnstile',
-  captchaMaxFailures: 'Trigger Threshold (Failures)',
+  captchaMaxFailures: 'Failure Threshold',
   captchaMaxFailuresPlaceholder: 'e.g. 3',
   captchaMaxFailuresDesc: 'Require CAPTCHA after this many consecutive password failures. Recommended: 3-5.',
   turnstileSiteKey: 'Site Key',
@@ -66,14 +66,14 @@ export const siteConfig = {
   turnstileSecretKey: 'Secret Key',
   turnstileSecretKeyPlaceholder: 'Enter the Turnstile Secret Key (leave blank to keep unchanged)',
   turnstileSecretKeyDesc: 'When Turnstile is enabled, all users must pass verification on each login.',
-  showBlacklistKeywords: 'Show Exact Blacklist Keywords',
+  showBlacklistKeywords: 'Show Exact Keyword',
   showBlacklistKeywordsDesc: 'Show the exact conflicting keyword when a request hits the blacklist; otherwise only show a generic keyword warning.',
   forcePasswordChangeOnFirstLogin: 'Force Password Change on First Login',
   forcePasswordChangeOnFirstLoginDesc:
     'When enabled, new users who have never set a password must set one on first login and cannot access other features until done.',
   hideStudentInfo: 'Hide Student Details',
   hideStudentInfoDesc: 'Hide full student IDs and real names from non-admin users in request lists and schedule previews.',
-  telemetryEnabled: 'Enable Error Tracking and Telemetry',
+  telemetryEnabled: 'Enable Error Tracking',
   telemetryEnabledDesc: 'Enabled by default. When on, the system sends frontend/backend error events and instance-online events to Sentry for instance statistics and deployment diagnostics.',
   telemetryPrivacy: 'No personal identity information, user data, or business content is collected.',
   configWarning: 'Site configuration takes effect immediately after saving. Review the impact before changing key business rules such as request limits.',
@@ -103,6 +103,15 @@ export const siteConfig = {
     parseApiErrorFailed: 'Failed to parse API error response:',
     saveFailed: 'Failed to save configuration:'
   },
+
+  // Platform names
+  platformNetease: 'NetEase Cloud Music',
+  platformTencent: 'QQ Music',
+  platformBilibili: 'Bilibili',
+  platformMigu: 'Migu Music',
+  platformEnabled: 'Enabled',
+  platformDisabled: 'Disabled',
+
   serverMessages: {
     oauthRedirectCallbackInvalid: 'oauthRedirectUri must be a callback URL, for example https://yourdomain.com/api/auth/[provider]/callback',
     oauthRedirectUrlInvalid: 'oauthRedirectUri is not a valid URL, for example https://yourdomain.com/api/auth/[provider]/callback',
@@ -188,6 +197,7 @@ export const changePassword = {
 
 export const common = {
   language: 'Language',
+  followSystem: 'Follow System',
   workerIn: 'Worker in',
   cancel: 'Cancel',
   confirm: 'Confirm',
@@ -273,12 +283,12 @@ export const pages = {
   authError: {
     title: 'Authentication Failed',
     errorCode: 'Error Code',
-    retryLogin: 'Try Signing In Again',
+    retryLogin: 'Try Again',
     backHome: 'Back to Home',
     contactAdmin: 'If you believe this is an error, please contact the system administrator',
     defaultMessage: 'An unknown error occurred while signing in with a third-party account. Please try again.',
     aggregateUnavailableTitle: 'This sign-in method is currently unavailable',
-    aggregateUnavailableAction: 'Choose Another Sign-in Method'
+    aggregateUnavailableAction: 'Choose Another Method'
   },
   resetPassword: {
     title: 'Reset Password',
@@ -485,8 +495,10 @@ export const pages = {
       semesters: 'Semester Management',
       blacklist: 'Blacklist Management',
       'site-config': 'Site Configuration',
+      'music-source': 'Music Source Control',
       database: 'Database Operations',
-      'api-keys': 'API Key Management'
+      'api-keys': 'API Key Management',
+      'card-codes': 'Card Codes'
     },
     roles: {
       USER: 'User',
@@ -538,7 +550,7 @@ export const pages = {
     tabs: {
       schedule: 'Schedule',
       songs: 'Songs',
-      request: 'Request Song',
+      request: 'Request',
       notification: 'Messages'
     },
     loginRequired: 'Login Required',
@@ -564,7 +576,7 @@ export const pages = {
     notificationTypes: {
       SONG_SELECTED: 'Song Selected',
       SONG_PLAYED: 'Song Played',
-      SONG_VOTED: 'New Vote Received',
+      SONG_VOTED: 'New Vote',
       SONG_REJECTED: 'Song Rejected',
       COLLABORATION_INVITE: 'Collaboration Invite',
       COLLABORATION_RESPONSE: 'Collaboration Response',
@@ -584,9 +596,9 @@ export const pages = {
     pageSize: 'Per page:',
     previousPage: 'Previous Page',
     nextPage: 'Next Page',
-    markAllRead: 'Mark All as Read',
+    markAllRead: 'Mark All Read',
     markAllReadSuccess: 'All notifications marked as read',
-    clearAllMessages: 'Clear All Messages',
+    clearAllMessages: 'Clear All',
     clearAllSuccess: 'All messages cleared',
     rulesTitle: 'Request Rules',
     rulesDesc: 'Please read these rules before submitting',
@@ -710,7 +722,7 @@ export const pages = {
   },
   auth: {
     loginForm: {
-      bindExisting: 'Bind Existing Account',
+      bindExisting: 'Bind Account',
       createAccount: 'Create New Account',
       bindProvider: (providerName: string, providerUsername: string) => `Binding ${providerName} account: ${providerUsername}`,
       createWithProvider: (providerName: string) => `Create a new account with ${providerName}`,
@@ -739,13 +751,13 @@ export const pages = {
       confirmPasswordPlaceholder: 'Enter password again',
       welcomeBack: 'Welcome Back',
       bindAccount: 'Bind Account',
-      createNewAccount: 'Create New Account',
+      createNewAccount: 'Create Account',
       binding: 'Binding...',
       loggingIn: 'Logging in...',
       bindAndLogin: 'Bind and Log In',
       login: 'Log In',
       or: 'or',
-      webauthn: 'Sign in with Windows Hello / Passkey',
+      webauthn: 'Sign in with Passkey',
       platformNote: 'Accounts are not shared across different VoiceHub platforms',
       fullLoginInfo: 'Please complete your login information',
       fullRegisterInfo: 'Please complete your registration information',
@@ -873,7 +885,7 @@ export const pages = {
       resendCode: 'Resend code',
       sendCode: 'Send code',
       verifyLogin: 'Verify Login',
-      switchToEmail: 'Cannot use authenticator? Switch to email',
+      switchToEmail: 'Use email instead',
       switchToTotp: 'Use authenticator app',
       backLogin: 'Back to Login',
       emailRequired: 'Please enter your email address',
@@ -1119,7 +1131,7 @@ export const pages = {
       submit: 'Submit'
     },
     musicLoginModal: {
-      neteaseTitle: 'NetEase Cloud QR Login',
+      neteaseTitle: 'NetEase QR Login',
       neteaseDesc: 'Scan the QR code to securely sign in',
       qqTitle: 'QQ Music QR Login',
       qqDesc: 'Scan the QR code to enable account playback',
@@ -1192,7 +1204,7 @@ export const pages = {
       play: 'Play',
       pause: 'Pause',
       replaySong: 'Replay Song',
-      viewSubmissionNote: 'View Submission Note',
+      viewSubmissionNote: 'View Note',
       replayApplicants: 'Replay applicants: ',
       applicant: 'Applicant: ',
       requester: 'Requester: ',
@@ -1210,7 +1222,7 @@ export const pages = {
       targetPlaylist: 'Target Playlist',
       playlistPlaceholder: 'Select playlist',
       refreshPlaylist: 'Refresh playlists',
-      deletePlaylist: 'Delete current playlist',
+      deletePlaylist: 'Delete Playlist',
       or: 'or',
       createPlaylist: 'Create Playlist',
       newPlaylistPlaceholder: 'New playlist name',
@@ -1274,7 +1286,7 @@ export const pages = {
       replay: 'Replay',
       replaySong: 'Replay Song',
       cardCodeUsed: 'Request Card',
-      viewSubmissionNote: 'View Submission Note',
+      viewSubmissionNote: 'View Note',
       mainRequesterTitle: 'Main requester: ',
       requesterTitle: 'Requester: ',
       collaboratorsTitle: 'Collaborators: ',
@@ -1323,7 +1335,8 @@ export const pages = {
       alreadyReplayed: 'This song has been replayed',
       alreadyRequestedReplay: 'Replay already requested',
       musicUrlFailed: 'Failed to get music playback URL',
-      semesterLoadFailed: 'Failed to load semester info. Please refresh and try again'
+      semesterLoadFailed: 'Failed to load semester info. Please refresh and try again',
+      platformAutoSwitched: (name: string) => `Current platform is unavailable, switched to ${name}`
     },
     requestForm: {
       guidelinesTitle: 'Submission Guidelines',
@@ -1347,13 +1360,13 @@ export const pages = {
         'This system only provides music search and playback management. It does not store music files. All music content comes from third-party platforms and belongs to their platforms and rights holders.',
         'The broadcasting station reserves the final interpretation right.'
       ],
-      searchLabel: 'Song Search',
+      searchLabel: 'Search',
       searchPlaceholder: 'Enter song name',
       processing: 'Processing...',
       search: 'Search',
       audioMatch: 'Recognize Song',
       audioMatchShort: 'Recognize',
-      importFromPast: 'Import Previous',
+      importFromPast: 'Import Prev',
       collaborators: 'Collaborators',
       add: 'Add',
       adminUnlimited: 'You are an admin and not limited by submission quotas',
@@ -1372,8 +1385,8 @@ export const pages = {
         migu: 'Migu Music'
       },
       refreshing: 'Refreshing',
-      neteaseLoginTitle: 'Sign in to NetEase for the full experience',
-      qqLoginTitle: 'Sign in to QQ Music for better playback stability',
+      neteaseLoginTitle: 'Sign in to NetEase for full features',
+      qqLoginTitle: 'Sign in to QQ Music for stable playback',
       loginNow: 'Sign In',
       importData: 'Import Data',
       loggedIn: 'Signed In',
@@ -1382,7 +1395,7 @@ export const pages = {
       podcast: 'Podcast',
       recent: 'Recent',
       playlist: 'Playlist',
-      exportCookie: 'Export Cookie Data',
+      exportCookie: 'Export Cookie',
       logout: 'Sign Out',
       logoutQQ: 'Sign out of QQ Music',
       preferredPlayTime: 'Preferred Time Slot',
@@ -1457,7 +1470,7 @@ export const pages = {
       coverAlt: 'Cover',
       albumDetailsTitle: 'Click to view album details',
       album: 'Album: ',
-      uploadToNeteaseCloud: 'Upload to NetEase Cloud Drive',
+      uploadToNeteaseCloud: 'Upload to Cloud Drive',
       allEpisodesSubmitted: 'All episodes exist',
       partialEpisodesSubmitted: 'Some episodes exist',
       chooseEpisodes: 'Choose Episodes',
@@ -1474,7 +1487,7 @@ export const pages = {
       chooseProgram: 'Choose Program',
       chooseSubmit: 'Submit',
       requestReplay: 'Request Replay',
-      manualSubmitLong: 'Not finding the song? Submit manually',
+      manualSubmitLong: 'Not found? Submit manually',
       loginRequiredToSubmit: 'Sign in to submit',
       loginRequiredNotice: 'You are not signed in and cannot submit requests',
       cardCodeBypassesLimit: 'Does not use regular quota',
@@ -1514,7 +1527,7 @@ export const pages = {
         details: 'Detailed Processing Records',
         allSuccess: 'All songs imported successfully!',
         done: 'Done',
-        title: 'Import from Previous Semester',
+        title: 'Import from Prev Semester',
         desc: 'Choose songs from previous semesters and import them into the current semester',
         selectSemester: 'Select Semester',
         semesterPlaceholder: 'Select target semester',
@@ -1671,7 +1684,7 @@ export const admin = {
     menu: {
       overview: 'Overview',
       schedule: 'Schedule',
-      print: 'Print Schedule',
+      print: 'Print',
       songs: 'Songs',
       dataAnalysis: 'Analytics',
       users: 'Users',
@@ -1683,6 +1696,7 @@ export const admin = {
       semesters: 'Semesters',
       blacklist: 'Blacklist',
       cardCodes: 'Request Cards',
+      musicSource: 'Music Source',
       siteConfig: 'Site Config',
       database: 'Database',
       password: 'Change Password'
@@ -1896,7 +1910,7 @@ export const admin = {
       title: 'Download Songs',
       quality: 'Select Quality',
       advancedOptions: 'Advanced Options',
-      mergeIntoOne: 'Merge into One File',
+      mergeIntoOne: 'Merge into One',
       mergeDesc: 'Merge selected songs into a single audio file in order',
       normalizeAudio: 'Audio Normalization',
       normalizeDesc: 'Normalize peak volume independently from export format',
@@ -1905,12 +1919,12 @@ export const admin = {
       savePreset: 'Save Preset',
       exportFormat: 'Export Format',
       mergeNeedsFormat: 'Merged files require an output format',
-      transcodeSingle: 'Transcode single audio files to the selected format',
+      transcodeSingle: 'Transcode to selected format',
       format: 'Format',
       customFilename: 'Custom Filename',
-      saveAsDefaultPreset: 'Save as Default Preset',
+      saveAsDefaultPreset: 'Save as Default',
       filenamePlaceholder: 'e.g. Episode XX - {songs}',
-      insertAllSongs: 'Insert all song names',
+      insertAllSongs: 'Insert All',
       insertDate: 'Insert current date',
       placeholders: 'Available placeholders:',
       allSongs: 'all song names',
@@ -2214,10 +2228,10 @@ export const admin = {
     preferredTime: 'Preferred Time',
     grade: 'Grade',
     sort: 'Sort',
-    playlistFilter: 'Playlist Duplicate Filter',
-    playlistFilterApplied: 'Playlist Filter Applied',
+    playlistFilter: 'Duplicate Filter',
+    playlistFilterApplied: 'Filter Applied',
     viewRemark: 'View Remark',
-    cardPending: 'Request Card Pending',
+    cardPending: 'Card Pending',
     cardCode: 'Request Card',
     view: 'View',
     rejectRequest: 'Reject Request',
@@ -2225,6 +2239,7 @@ export const admin = {
     downloadSongs: 'Download Songs',
     markAllPlayed: 'Mark All Played',
     moveDate: 'Move Date',
+    copyDate: 'Copy Schedule',
     clearList: 'Clear List',
     publishSchedule: 'Publish Schedule',
     publishOnly: 'Publish Only',
@@ -2238,6 +2253,7 @@ export const admin = {
     andMoreApplicants: (count: number) => ` and ${count} more`,
     publishThisDraft: 'Publish this draft',
     moveDateTitle: 'Move Schedule Date',
+    copyDateTitle: 'Copy Schedule Date',
     currentDate: (date: string) => `Current date: ${date}`,
     nextStep: 'Next',
     replayDetailTitle: (title: string) => `${title} - Replay Request Details`,
@@ -2291,6 +2307,8 @@ export const admin = {
       clearListConfirm: 'Clear',
       moveDateMessage: (sourceDate: string, count: number, targetDate: string) => `Move all ${count} songs from ${sourceDate} to ${targetDate}? Order and content will be preserved.`,
       moveDateConfirm: 'Move',
+      copyDateMessage: (sourceDate: string, count: number, targetDate: string) => `Copy all ${count} songs from ${sourceDate} to ${targetDate}? The original schedule will remain and a new one will be created.`,
+      copyDateConfirm: 'Copy',
       deleteScheduleTitle: 'Delete Schedule',
       deleteScheduleMessage: 'Delete all schedules for this day? This cannot be recovered.',
       deleteScheduleConfirm: 'Delete',
@@ -2305,7 +2323,9 @@ export const admin = {
       allMarkedPlayed: 'All songs marked as played',
       playlistCleared: 'Playlist cleared. Remember to save changes',
       saveBeforeMove: 'Save current unpublished changes before moving schedules',
+      saveBeforeCopy: 'Save current unpublished changes before copying schedules',
       moveDateSuccess: (count: number, date: string) => `Moved ${count} songs to ${date}`,
+      copyDateSuccess: (count: number, date: string) => `Copied ${count} songs to ${date}`,
       draftSaved: 'Schedule draft saved!',
       allDraftsDeleted: 'All drafts deleted!',
       scheduleDeleted: 'Schedule deleted!',
@@ -2344,6 +2364,8 @@ export const admin = {
       sameTargetDate: 'Target date cannot be the same as the current date',
       noMovableSongs: 'No movable songs on the current date',
       moveDateFailed: (message: string) => `Move failed: ${message}`,
+      noCopyableSongs: 'No copyable songs on the current date',
+      copyDateFailed: (message: string) => `Copy failed: ${message}`,
       saveDraftFailed: (message: string) => `Failed to save draft: ${message}`,
       publishScheduleFailed: (message: string) => `Failed to publish schedule: ${message}`,
       publishDraftFailed: (message: string) => `Failed to publish draft: ${message}`
@@ -2372,16 +2394,16 @@ export const admin = {
     creating: 'Creating...',
     createBackup: 'Create Backup',
     importFileTitle: 'Import Backup File',
-    uploadTitle: 'Choose or Drag Backup File',
+    uploadTitle: 'Choose or Drag File',
     uploadDesc: 'Supports .json backup files up to 100MB',
     restoreMode: 'Restore Mode',
     mergeMode: 'Merge Mode (Recommended)',
     mergeModeDesc: 'Update existing records and add new ones',
     replaceMode: 'Replace Mode',
     replaceModeDesc: 'Clear data first, then import the backup',
-    confirmClear: 'I confirm clearing existing data',
+    confirmClear: 'I confirm clearing data',
     confirmClearDesc: 'This action cannot be undone. Proceed carefully.',
-    overwriteSuperAdmin: 'Overwrite super admin account data from backup',
+    overwriteSuperAdmin: 'Overwrite super admin from backup',
     overwriteSuperAdminDesc: 'When disabled, the current super admin, third-party bindings, and 2FA data are preserved',
     warningTitle: 'Warning',
     warningDesc: 'Importing a backup affects existing data. Make sure you understand the consequences.',
@@ -2402,7 +2424,7 @@ export const admin = {
     title: 'OAuth Third-Party Login Configuration',
     runtimeConfigNotice: 'OAuth runtime configuration is managed in the admin panel. Environment variables are retained only for legacy deployments and one-click import; imported values must still be saved here.',
     baseSettings: 'Basic Settings',
-    importEnv: 'Import Environment Configuration',
+    importEnv: 'Import Env Config',
     allowRegistration: 'Allow Third-Party Registration',
     allowRegistrationDesc: 'When enabled, users can create new accounts through OAuth. When disabled, OAuth can only bind existing accounts.',
     allowed: 'Allowed',
@@ -2479,10 +2501,28 @@ export const admin = {
       importEnvFailed: 'Failed to import environment configuration:'
     }
   },
+  musicSourceController: {
+    title: 'Music Source Control',
+    description: 'Manage music platform switches and search order. Changes take effect immediately.',
+    saveConfig: 'Save Config',
+    saving: 'Saving...',
+    saved: 'Saved',
+    reset: 'Reset',
+    loading: 'Loading...',
+    fetchFailed: 'Failed to fetch config',
+    saveFailedRetry: 'Save failed, please retry',
+    saveSuccess: 'Source config saved',
+    switchTitle: 'Platform Switch',
+    switchDesc: 'Enable or disable each music platform for search',
+    orderTitle: 'Search Order',
+    orderDesc: 'Drag to reorder platform buttons in the search area',
+    resetOrder: 'Reset Order',
+    mustKeepOne: 'At least one platform must stay enabled'
+  },
   playTimeManager: {
     title: 'Play Time Management',
     desc: 'Define regular broadcast windows. Users can request songs or view schedules within these periods.',
-    enableSelection: 'Enable Play Time Selection',
+    enableSelection: 'Enable Time Selection',
     add: 'Add Play Time',
     aboutTitle: 'About Time Limits',
     aboutDesc: 'When global play time selection is enabled, requests are only open during configured periods. Empty start or end times are treated as unlimited boundaries.',
@@ -2772,7 +2812,7 @@ export const admin = {
     notificationContent: 'Notification Content',
     contentPlaceholder: 'Enter notification details...',
     markdownHint: 'Markdown is supported and rendered safely in the preview.',
-    importantToggleTitle: 'Important Notification Pop-up',
+    importantToggleTitle: 'Important Pop-up',
     importantToggleDescription: 'Shown in a pop-up after sign-in and marked as read when closed',
     scope: 'Notification Scope',
     allUsersHint: 'This notification will be sent to all active registered users.',
@@ -2790,7 +2830,7 @@ export const admin = {
     selectedUsers: (count: number) => `Selected Users (${count})`,
     clearAll: 'Clear All',
     noUsersSelected: 'No users selected',
-    send: 'Send Notification',
+    send: 'Send',
     sending: 'Sending...',
     previewTitle: 'Notification Preview',
     previewSender: 'Administrator',
@@ -2918,7 +2958,7 @@ export const admin = {
     allStatus: 'All Status',
     clearFilters: 'Clear Filters',
     selectedItems: (count: number) => `${count} selected`,
-    applyBulk: 'Apply Bulk Action',
+    applyBulk: 'Apply Bulk',
     cancelSelection: 'Cancel Selection',
     loading: 'Loading request cards...',
     cardCode: 'Request Card',
@@ -3037,7 +3077,7 @@ export const admin = {
     maintenanceDesc: 'Create a full backup weekly. Before restoring a backup or resetting the database, create a fresh backup to avoid irreversible data loss.',
     backupTitle: 'Create Database Backup',
     restoreTitle: 'Restore Database Backup',
-    selectContent: 'Select Included Content',
+    selectContent: 'Select Content',
     backupHint: 'The backup file will be generated as .json and downloaded automatically',
     cancel: 'Cancel',
     exporting: 'Exporting...',
@@ -3049,11 +3089,11 @@ export const admin = {
       merge: { title: 'Incremental Mode', desc: 'Import only new non-duplicate records' },
       replace: { title: 'Replace Mode', desc: 'Clear existing tables before full restore' }
     },
-    overwriteSuperAdmin: 'Overwrite super admin account data from backup',
+    overwriteSuperAdmin: 'Overwrite super admin from backup',
     overwriteSuperAdminDesc: 'When disabled, the current super admin account plus third-party bindings and 2FA data are kept.',
     replaceWarning: 'Warning: replace mode permanently clears matching tables in the current database. Existing sessions will be interrupted.',
     restoring: 'Restoring...',
-    confirmRestore: 'Confirm and Start Restore',
+    confirmRestore: 'Confirm & Restore',
     resetSequenceTitle: 'Reset Table Sequences',
     selectTargetTable: 'Select Target Table',
     sequenceHelpTitle: 'What is sequence reset?',
@@ -3066,7 +3106,7 @@ export const admin = {
     dangerResetScope: 'songs, submissions, schedules, notifications, logs, and user accounts except yours',
     confirmCodeLabel: 'Enter the following code to confirm',
     confirmCodePlaceholder: 'Enter the code above...',
-    confirmResetDatabase: 'Confirm Full Reset',
+    confirmResetDatabase: 'Confirm Reset',
     cards: {
       backup: { title: 'Create Backup', desc: 'Export all current database data to a file for backup or migration.', button: 'Create Backup File' },
       restore: { title: 'Restore Backup', desc: 'Restore system data from a previously exported backup file.', button: 'Select Backup File' },
@@ -3291,8 +3331,8 @@ export const admin = {
       graduate: 'Graduate',
       disabled: 'Disabled',
       activeAccess: 'Active Access',
-      withdrawnAccess: 'Restricted Access (Withdrawn)',
-      graduateAccess: 'Restricted Access (Graduate)'
+      withdrawnAccess: 'Restricted (Withdrawn)',
+      graduateAccess: 'Restricted (Graduate)',
     },
     actions: {
       edit: 'Edit',
@@ -3320,7 +3360,7 @@ export const admin = {
       namePlaceholder: 'Enter real name',
       username: 'Username / Student ID',
       usernamePlaceholder: 'Unique login identifier',
-      newPassword: 'New Password (leave blank to keep unchanged)',
+      newPassword: 'New Password (blank = unchanged)',
       initialPassword: 'Initial Password',
       passwordPlaceholder: 'Set a secure password',
       role: 'Role',
@@ -3397,6 +3437,10 @@ export const admin = {
         statusBatch: {
           title: 'Set Account Status',
           desc: 'Batch set account status for selected students'
+        },
+        songAdminBatch: {
+          title: 'Song Admin',
+          desc: 'Batch update grade, class, and account status for Song Admins'
         }
       },
       fields: {
@@ -3429,6 +3473,26 @@ export const admin = {
         targetStatusPlaceholder: 'Select target status',
         reason: 'Reason for Change',
         reasonPlaceholder: 'e.g. Batch graduate class of 2025'
+      },
+      songAdminSettings: {
+        title: 'Song Admin Info Update',
+        desc: 'Selected users will apply the changes below (blank fields keep original values)',
+        scope: 'Song Admin Scope Filter',
+        currentGrade: 'Current Grade',
+        currentClass: 'Current Class',
+        allGrades: 'All Grades',
+        allClasses: 'All Classes',
+        selectUsers: (selected: number, total: number) => `Select Admins (${selected}/${total})`,
+        clearSelection: 'Clear Selection',
+        selectAll: 'Select All Current',
+        noMatchedUsers: 'No Song Admins match the filters',
+        targetSettings: 'Update Target Settings',
+        targetGrade: 'Target Grade',
+        targetGradePlaceholder: 'e.g. 2025 (blank keeps original)',
+        targetClass: 'Target Class',
+        targetClassPlaceholder: 'e.g. Class 1 (blank keeps original)',
+        targetStatus: 'Target Account Status',
+        targetStatusPlaceholder: 'Select target status (blank keeps original)'
       },
       statusOptions: {
         all: 'Any current status',
@@ -3479,7 +3543,7 @@ export const admin = {
       actions: {
         cancel: 'Cancel',
         submitting: 'Submitting updates...',
-        confirm: 'Confirm and Start Update'
+        confirm: 'Confirm & Update'
       },
       template: {
         headers: {
@@ -3506,7 +3570,10 @@ export const admin = {
         partialExcelSuccess: (success: number, failed: number) => `Partially updated: ${success} succeeded, ${failed} failed. Please check and retry.`,
         excelFailed: (failed: number) => `Batch update failed: ${failed} users could not be updated. Please check and retry.`,
         partialStatusSuccess: (failed: number) => `Partially updated. ${failed} users were skipped due to permissions or status.`,
-        statusSuccess: 'Batch status update succeeded'
+        statusSuccess: 'Batch status update succeeded',
+        songAdminSuccess: (count: number) => `Successfully updated ${count} Song Admins`,
+        partialSongAdminSuccess: (failed: number) => `Partially updated. ${failed} admins were skipped due to permissions or status.`,
+        songAdminNoChanges: 'No changes needed for the selected Song Admins'
       },
       errors: {
         invalidExcelFormat: 'Invalid Excel format. Please check the file format.',
@@ -3527,7 +3594,8 @@ export const admin = {
         noValidUpdates: 'No valid update data',
         batchRequestFailed: 'Batch update request failed',
         invalidBatchResponse: 'Batch update API returned an invalid response',
-        statusUpdateFailed: 'Batch status update failed'
+        statusUpdateFailed: 'Batch status update failed',
+        songAdminUpdateFailed: 'Batch Song Admin update failed'
       }
     },
     deleteDialog: {
@@ -3673,7 +3741,7 @@ export const admin = {
     createSuccessDesc: 'Store this API key safely. It will only be shown once.',
     fullKey: 'Full API Key',
     copyWarning: 'Copy and save this API key now. It cannot be viewed again after closing this window.',
-    closeSaved: 'Saved, close window',
+    closeSaved: 'Saved, Close',
     details: 'API Key Details',
     basicInfo: 'Basic Info',
     nameField: 'Name:',
@@ -3718,6 +3786,15 @@ export const admin = {
   }
 } as const
 
+// ==================== Theme ====================
+export const theme = {
+  select: 'Choose theme',
+  System: 'Follow System',
+  ClassicDark: 'Classic Dark',
+  ClassicLight: 'Classic Light',
+  ModernLight: 'Modern Light'
+} as const
+
 // Localized copy for server-side business error codes (keyed by SERVER_ERROR_CODES in server/config/constants.ts).
 // The client resolves these via useServerErrors().localize(err) using err.data.code, falling back to the server message.
 export const serverErrors = {
@@ -3751,6 +3828,8 @@ export const serverErrors = {
   AUTH_INCOMPLETE_PARAMS: 'Incomplete parameters',
   COMMON_INVALID_PARAMS: 'Invalid parameters',
   AUTH_NAME_USERNAME_PASSWORD_REQUIRED: 'Name, username, and password are required',
+  AUTH_USERNAME_LENGTH_INVALID: 'Username must be between 3 and 30 characters',
+  AUTH_USERNAME_PATTERN_INVALID: 'Username may only contain letters, numbers, underscores, and hyphens',
   AUTH_PASSWORD_TOO_SHORT: 'Password must be at least 8 characters',
   AUTH_PASSWORD_TOO_LONG: 'Password cannot exceed 128 characters',
   AUTH_PASSWORD_TOO_MANY_BYTES: 'Password cannot exceed 72 bytes',
@@ -3772,6 +3851,7 @@ export const serverErrors = {
   AUTH_DATABASE_UNAVAILABLE: 'The database service is temporarily unavailable',
   AUTH_NEW_PASSWORD_SAME_AS_CURRENT: 'The new password cannot be the same as the current password',
   AUTH_NEW_PASSWORD_REQUIRED: 'The new password cannot be empty',
+  AUTH_REGISTER_PASSWORD_MISMATCH: 'The two passwords do not match',
   AUTH_INVALID_REGISTER_TOKEN: 'Invalid registration token',
   AUTH_INVALID_BINDING_TOKEN: 'Invalid binding token',
   AUTH_INVALID_RESET_LINK: 'Invalid reset link',
@@ -3915,6 +3995,7 @@ export const serverErrors = {
   USER_CODE_INVALID: 'Incorrect verification code',
   USER_CODE_TOO_MANY_ATTEMPTS: 'Too many incorrect verification codes. Please resend.',
   BACKUP_DISABLED: 'Auto backup is disabled',
+  MUSIC_SOURCE_PLATFORM_DISABLED: 'Platform "{0}" is disabled. Available platforms: {1}',
   BACKUP_NOT_CONFIGURED: 'Auto backup is not configured',
   NO_BACKUP_METHOD_ENABLED: 'No backup methods enabled',
   BACKUP_FAILED: 'Backup execution failed',
