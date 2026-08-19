@@ -168,7 +168,7 @@ export const MUSIC_SOURCE_CONFIG: MusicSourceConfig = {
     {
       id: 'meting-1',
       name: 'Meting API 备用源1',
-      baseUrl: 'https://api.qijieya.cn/meting',
+      baseUrl: 'https://api.qijieya.cn/meting/',
       priority: 5,
       enabled: true,
       timeout: 8000,
@@ -179,7 +179,7 @@ export const MUSIC_SOURCE_CONFIG: MusicSourceConfig = {
     {
       id: 'meting-2',
       name: 'Meting API 备用源2',
-      baseUrl: 'https://api.obdo.cc/meting',
+      baseUrl: 'https://api.injahow.cn/meting/',
       priority: 6,
       enabled: true,
       timeout: 8000,
