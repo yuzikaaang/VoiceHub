@@ -17,9 +17,12 @@ export interface User {
   email?: string | null
   emailVerified?: boolean
   identities?: Array<{
+    id: number
     provider: string
     providerUsername?: string | null
     providerUserId?: string | null
+    avatar?: string | null
+    isAvatarSource?: boolean
   }>
 }
 
@@ -160,6 +163,8 @@ export interface SystemSettings {
   enableCardCodeRequests?: boolean
   requireCardCodeForRequests?: boolean
   enableCardCodeLimitBypass?: boolean
+  defaultTheme?: 'System' | 'ClassicDark' | 'ClassicLight' | 'ModernLight'
+  enabledThemes?: string[] | string
 }
 
 export interface RequestTime {

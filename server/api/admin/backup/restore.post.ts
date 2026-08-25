@@ -31,6 +31,10 @@ import { SmtpService } from '../../../services/smtpService'
 import { and, eq, inArray, isNull, notInArray, or } from 'drizzle-orm'
 import { restoreScheduleSongPoolRecord } from '~~/server/utils/restoreScheduleSongPool'
 import { omitMaskedSystemSettingsSecrets } from '~~/server/api/admin/system-settings/secretMask'
+import { validateThemeConfig } from '~~/server/utils/theme-config'
+import { createApiError } from '~~/server/utils/apiError'
+import { SERVER_ERROR_CODES } from '~~/server/config/constants'
+import { normalizeScheduleVisibilitySettings } from '~~/server/utils/system-settings-defaults'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -365,7 +369,9 @@ export default defineEventHandler(async (event) => {
                             'forcePasswordChange',
                             'meowNickname',
                             'status',
-                            'statusChangedBy'
+                            'statusChangedBy',
+                            'avatarProvider',
+                            'avatarProviderUserId'
                           ]
 
                           // 处理日期字段
@@ -591,6 +597,7 @@ export default defineEventHandler(async (event) => {
                           provider: record.provider,
                           providerUserId: record.providerUserId,
                           providerUsername: record.providerUsername,
+                          avatar: record.avatar || null,
                           createdAt: record.createdAt ? new Date(record.createdAt) : new Date()
                         }
 
@@ -1127,6 +1134,8 @@ export default defineEventHandler(async (event) => {
                         const systemSettingsFields = [
                           'enablePlayTimeSelection',
                           'instanceId',
+                          'defaultTheme',
+                          'enabledThemes',
                           'telemetryEnabled',
                           'siteTitle',
                           'siteLogoUrl',
@@ -1140,6 +1149,10 @@ export default defineEventHandler(async (event) => {
                           'dailySubmissionLimit',
                           'weeklySubmissionLimit',
                           'monthlySubmissionLimit',
+                          'scheduleDaysBeforeEnabled',
+                          'scheduleDaysBefore',
+                          'scheduleDaysAfterEnabled',
+                          'scheduleDaysAfter',
                           'showBlacklistKeywords',
                           'enableRequestTimeLimitation',
                           'forceBlockAllRequests',
@@ -1213,6 +1226,23 @@ export default defineEventHandler(async (event) => {
                             systemSettingsData[field] = record[field]
                           }
                         })
+                        if (Object.prototype.hasOwnProperty.call(systemSettingsData, 'defaultTheme') || Object.prototype.hasOwnProperty.call(systemSettingsData, 'enabledThemes')) {
+                          if (!Object.prototype.hasOwnProperty.call(systemSettingsData, 'defaultTheme') || !Object.prototype.hasOwnProperty.call(systemSettingsData, 'enabledThemes')) {
+                            throw createApiError(400, SERVER_ERROR_CODES.THEME_INVALID_LIST, '主题配置必须同时包含默认主题和启用主题列表')
+                          }
+                          systemSettingsData.enabledThemes = JSON.stringify(validateThemeConfig(systemSettingsData.defaultTheme, systemSettingsData.enabledThemes))
+                        }
+                        for (const field of ['scheduleDaysBeforeEnabled', 'scheduleDaysAfterEnabled']) {
+                          if (Object.prototype.hasOwnProperty.call(systemSettingsData, field) && systemSettingsData[field] !== null && typeof systemSettingsData[field] !== 'boolean') {
+                            throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, `${field} 必须是布尔值`)
+                          }
+                        }
+                        for (const field of ['scheduleDaysBefore', 'scheduleDaysAfter']) {
+                          if (Object.prototype.hasOwnProperty.call(systemSettingsData, field) && (systemSettingsData[field] !== null && (!Number.isInteger(systemSettingsData[field]) || systemSettingsData[field] < 1 || systemSettingsData[field] > 730))) {
+                            throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, `${field} 必须是 1-730 的正整数`)
+                          }
+                        }
+                        systemSettingsData = normalizeScheduleVisibilitySettings(systemSettingsData)
                         systemSettingsData = omitMaskedSystemSettingsSecrets(systemSettingsData)
 
                         if (mode === 'merge') {
