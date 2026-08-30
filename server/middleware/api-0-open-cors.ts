@@ -3,7 +3,8 @@ const ALLOWED_ORIGINS = new Set([
   'https://yuzikaaang.github.io',
   'https://zikang0529.gitee.io',
   'http://localhost:8899',
-  'http://127.0.0.1:8899'
+  'http://127.0.0.1:8899',
+  'https://a5048c773a210b3d4-25579.app.workbuddy.link', 
 ])
 export default defineEventHandler((event) => {
   const { pathname } = getRequestURL(event)
