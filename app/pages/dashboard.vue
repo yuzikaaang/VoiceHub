@@ -151,6 +151,14 @@
               <LazyAdminBlacklistManager />
             </div>
 
+            <!-- 年级班级管理 -->
+            <div
+              v-if="activeTab === 'grade-class' && permissions.canAccessPage('grade-class')"
+              class="animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+              <LazyAdminGradeClassManager />
+            </div>
+
             <!-- 站点配置 -->
             <div
               v-if="activeTab === 'site-config' && permissions.canAccessPage('site-config')"
@@ -203,6 +211,7 @@ import { useAuth } from '~/composables/useAuth'
 import { usePermissions } from '~/composables/usePermissions'
 import { useSiteConfig } from '~/composables/useSiteConfig'
 import { useLocale } from '~/utils/locale'
+import { useScrollMemory } from '~/composables/useScrollMemory'
 
 // 使用站点配置
 const { siteTitle, initSiteConfig } = useSiteConfig()
@@ -218,6 +227,10 @@ definePageMeta({
 
 // 响应式数据
 const activeTab = ref('overview')
+
+// 各面板滚动位置独立记忆与恢复
+useScrollMemory(() => activeTab.value)
+
 const currentUser = ref(null)
 const sidebarOpen = ref(false)
 const showBackToTop = ref(false)
