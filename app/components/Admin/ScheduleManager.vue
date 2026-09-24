@@ -64,7 +64,7 @@
         <div class="flex items-center border-l border-border-secondary ml-1 pl-1">
           <!-- 定位到今天 -->
           <button
-            class="p-2 text-text-tertiary hover:text-success transition-colors"
+            class="flex items-center justify-center p-2 text-text-tertiary hover:text-success transition-colors"
             :title="locale.jumpToday"
             @click="scrollToToday"
           >
@@ -73,7 +73,7 @@
 
           <!-- 手动日期选择按钮 -->
           <button
-            class="p-2 text-text-tertiary hover:text-primary transition-colors"
+            class="flex items-center justify-center p-2 text-text-tertiary hover:text-primary transition-colors"
             :title="locale.selectSpecificDate"
             @click="openManualDatePicker"
           >
@@ -581,7 +581,7 @@
 
                     <!-- 刷新时长按钮 -->
                     <button
-                      class="p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-primary transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-primary transition-colors"
                       :title="locale.refreshDuration"
                       :disabled="refreshingDuration[song.id]"
                       @click.stop="refreshDuration(song)"
@@ -592,7 +592,7 @@
                     <!-- 菜单按钮 -->
                     <button
                       type="button"
-                      class="p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-text-tertiary transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-text-tertiary transition-colors"
                       @click="openContextMenu($event, 'left', song)"
                     >
                       <MoreVertical class="w-4 h-4" />
@@ -675,6 +675,17 @@
                   <span
                     class="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-bg-tertiary text-[9px] text-text-secondary rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-border-tertiary"
                     >{{ locale.downloadSongs }}</span
+                  >
+                </button>
+                <button
+                  :disabled="localScheduledSongs.length === 0"
+                  class="flex items-center justify-center p-2 bg-bg-primary border border-border-secondary hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-xl transition-all group relative disabled:opacity-50 disabled:cursor-not-allowed"
+                  @click="openPlaylistExportDialog"
+                >
+                  <FileSpreadsheet class="w-3.5 h-3.5" />
+                  <span
+                    class="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-bg-tertiary text-[9px] text-text-secondary rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-border-tertiary"
+                    >{{ locale.exportPlaylist }}</span
                   >
                 </button>
                 <button
@@ -959,7 +970,7 @@
                   <div class="flex items-center gap-2">
                     <button
                       v-if="schedule.isDraft"
-                      class="p-1.5 rounded-lg bg-success-10 hover:bg-success-20 text-success border border-success-20 transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg bg-success-10 hover:bg-success-20 text-success border border-success-20 transition-colors"
                       :title="locale.publishThisDraft"
                       @click="publishSingleDraft(schedule)"
                     >
@@ -976,7 +987,7 @@
 
                     <!-- 刷新时长按钮 -->
                     <button
-                      class="p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-primary hover:border-primary-30 transition-all duration-200"
+                      class="flex items-center justify-center p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-primary hover:border-primary-30 transition-all duration-200"
                       :class="{
                         'bg-primary-10 border-primary-30 text-primary shadow-[0_0_0_3px_var(--primary-glow)]': refreshingDuration[schedule.song.id]
                       }"
@@ -989,7 +1000,7 @@
 
                     <button
                       type="button"
-                      class="p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-text-tertiary transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg bg-bg-primary border border-border-secondary text-text-disabled hover:text-text-tertiary transition-colors"
                       @click="openContextMenu($event, 'right', schedule)"
                     >
                       <MoreVertical class="w-4 h-4" />
@@ -1013,6 +1024,14 @@
               @click="openDownloadDialog"
             >
               <Download class="w-5 h-5" />
+            </button>
+            <button
+              class="w-11 h-11 shrink-0 bg-bg-secondary border border-border-secondary text-text-tertiary rounded-xl flex items-center justify-center active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="localScheduledSongs.length === 0"
+              :title="locale.exportPlaylist"
+              @click="openPlaylistExportDialog"
+            >
+              <FileSpreadsheet class="w-5 h-5" />
             </button>
             <button
               class="w-11 h-11 shrink-0 bg-bg-secondary border border-border-secondary text-text-tertiary rounded-xl flex items-center justify-center active:scale-95 transition-all"
@@ -1110,6 +1129,16 @@
     :show="showDownloadDialog"
     :songs="localScheduledSongs"
     @close="showDownloadDialog = false"
+  />
+
+  <!-- 导出歌单对话框 -->
+  <SchedulePlaylistExportModal
+    :show="showPlaylistExportDialog"
+    :songs="localScheduledSongs"
+    :play-times="playTimes"
+    :schedule-date="selectedDate"
+    :play-time-label="playTimeEnabled && selectedPlayTime ? getPlayTimeName(selectedPlayTime) : ''"
+    @close="showPlaylistExportDialog = false"
   />
 
   <div
@@ -1847,9 +1876,11 @@ import {
   Loader2,
   Sparkles,
   FolderPlus,
+  FileSpreadsheet,
   Lock
 } from '@lucide/vue'
 import SongDownloadDialog from './SongDownloadDialog.vue'
+import SchedulePlaylistExportModal from './SchedulePlaylistExportModal.vue'
 import SubmissionRemarkDialog from './SubmissionRemarkDialog.vue'
 import ConfirmDialog from '../UI/ConfirmDialog.vue'
 import Icon from '~/components/UI/Icon.vue'
@@ -2087,6 +2118,12 @@ const confirmAction = ref(null)
 const showDownloadDialog = ref(false)
 const openDownloadDialog = () => {
   showDownloadDialog.value = true
+}
+
+// 导出歌单（CSV）
+const showPlaylistExportDialog = ref(false)
+const openPlaylistExportDialog = () => {
+  showPlaylistExportDialog.value = true
 }
 
 // 重播申请弹窗相关
@@ -2355,6 +2392,15 @@ const songPool = ref([])
 const poolLoading = ref(false)
 // 备选池已包含的歌曲 ID 集合，用于禁用重复加入按钮
 const poolSongIds = computed(() => new Set(songPool.value.map((p) => p.songId)))
+// 备选池统一过滤：已播放或已在任意日期排期（含草稿）/已加入当前播放顺序的歌曲不再是候选
+const filteredPoolSongs = computed(() => {
+  const scheduledIds = new Set(localScheduledSongs.value.map((s) => s.song && s.song.id).filter(Boolean))
+  return songPool.value.filter((item) => {
+    if (item.played) return false
+    if (scheduledSongIds.value.has(item.songId) || scheduledIds.has(item.songId)) return false
+    return true
+  })
+})
 const showMoveDateDialog = ref(false)
 const moveTargetDate = ref('')
 const showCopyDateDialog = ref(false)
@@ -2658,7 +2704,11 @@ const pageStates = reactive({
   pool: 1
 })
 const currentPage = computed({
-  get: () => pageStates[activeTab.value] || 1,
+  get: () => {
+    const page = pageStates[activeTab.value] || 1
+    // 页码不超过总页数，避免最后一页歌曲被移出后显示空页
+    return Math.min(page, Math.max(1, totalPages.value))
+  },
   set: (val) => {
     if (pageStates[activeTab.value] !== undefined) {
       pageStates[activeTab.value] = val
@@ -2723,13 +2773,7 @@ const availableGrades = computed(() => {
 const allUnscheduledSongs = computed(() => {
   // 备选池模式
   if (activeTab.value === 'pool') {
-    let poolSongs = songPool.value.filter((item) => {
-      // 与普通歌曲逻辑一致：已在任意日期排期（含草稿）或已加入当前播放顺序的歌曲不再展示
-      const isScheduledInCurrentView = localScheduledSongs.value.some(
-        (s) => (s.song && s.song.id === item.songId) || s.songId === item.songId
-      )
-      return !isScheduledInCurrentView && !scheduledSongIds.value.has(item.songId)
-    })
+    let poolSongs = filteredPoolSongs.value
     if (searchQuery.value) {
       const query = searchQuery.value.toLowerCase()
       poolSongs = poolSongs.filter((song) => {
@@ -3580,7 +3624,8 @@ const resolveClientAudioDuration = async (song, signal) => {
           musicInfo: {
             name: song.title,
             artist: song.artist,
-            album: song.album || undefined
+            album: song.album || undefined,
+            rawItem: song
           }
         }
       )
@@ -4031,9 +4076,9 @@ const autoScheduleCandidates = computed(() => {
   )
   const excludeIds = new Set([...scheduledIds, ...otherDateDraftIds])
 
-  // 备选池模式
+  // 备选池模式：复用备选池统一过滤（排除已排期/已播放），与备选池展示口径一致
   if (activeTab.value === 'pool') {
-    return songPool.value
+    return filteredPoolSongs.value
       .filter((item) => !excludeIds.has(item.songId))
       .map(poolCandidateFromItem)
   }
@@ -4041,8 +4086,8 @@ const autoScheduleCandidates = computed(() => {
   // 待排库/重播/所有：复用 allUnscheduledSongs 的过滤逻辑，再排除已排期歌曲
   const base = allUnscheduledSongs.value.filter((s) => !excludeIds.has(s.id))
   if (activeTab.value === 'all') {
-    // 「所有」额外纳入备选池未排期的歌曲
-    const poolCandidates = songPool.value
+    // 「所有」额外纳入备选池未排期且未播放的歌曲
+    const poolCandidates = filteredPoolSongs.value
       .filter((item) => !excludeIds.has(item.songId))
       .map(poolCandidateFromItem)
     const baseIds = new Set(base.map((s) => s.id))
@@ -5153,75 +5198,23 @@ const refreshDrafts = async () => {
 }
 
 // 保存草稿（无需确认）
-// 流程：先写入全部草稿，全部成功后再删除旧排期，避免中间失败导致数据丢失
+// songs 数组顺序即播放顺序，服务端在同一事务内完成旧排期删除与草稿写入
 const saveDraft = async () => {
   loading.value = true
 
   try {
-    // 收集当天指定播出时段的所有现有排期和草稿 ID
-    const existingScheduleIds = [...publicSchedules.value, ...drafts.value]
-      .filter((s) => {
-        if (!s.playDate) return false
-        const scheduleDateStr = getScheduleDateValue(s.playDate)
-        const isTargetDate = scheduleDateStr === selectedDate.value
-        if (selectedPlayTime.value) {
-          return isTargetDate && s.playTimeId === parseInt(selectedPlayTime.value)
-        }
-        return isTargetDate
-      })
-      .map((s) => s.id)
-
-    // 先写入全部草稿，全部成功后再删除旧排期
-    const newDraftIds = []
-    for (let i = 0; i < localScheduledSongs.value.length; i++) {
-      const song = localScheduledSongs.value[i]
-
-      try {
-        const created = await $fetch('/api/admin/schedule/draft', {
-          method: 'POST',
-          body: {
-            songId: song.song.id,
-            playDate: selectedDate.value,
-            sequence: i + 1,
-            playTimeId: selectedPlayTime.value ? parseInt(selectedPlayTime.value) : null,
-            replayRequestId: song.replayRequestId || song.song?.replayRequestId || null
-          },
-          ...auth.getAuthConfig()
-        })
-        if (created?.id) {
-          newDraftIds.push(created.id)
-        }
-      } catch (error) {
-        console.error(`创建草稿排期失败 (歌曲: ${song.song.title}):`, error)
-        throw error
-      }
-    }
-
-    // 全部写入成功后，删除旧排期和草稿
-    try {
-      for (const scheduleId of existingScheduleIds) {
-        await $fetch(`/api/admin/schedule/remove`, {
-          method: 'POST',
-          body: { scheduleId },
-          ...auth.getAuthConfig()
-        })
-      }
-    } catch (deleteError) {
-      console.error('删除旧排期失败:', deleteError)
-      // 删除失败时回滚新建草稿
-      for (const draftId of newDraftIds) {
-        try {
-          await $fetch('/api/admin/schedule/remove', {
-            method: 'POST',
-            body: { scheduleId: draftId },
-            ...auth.getAuthConfig()
-          })
-        } catch (rollbackErr) {
-          console.error('回滚新建草稿失败:', rollbackErr)
-        }
-      }
-      throw deleteError
-    }
+    await $fetch('/api/admin/schedule/bulk-draft', {
+      method: 'POST',
+      body: {
+        playDate: selectedDate.value,
+        playTimeId: selectedPlayTime.value ? parseInt(selectedPlayTime.value) : null,
+        songs: localScheduledSongs.value.map((item) => ({
+          songId: item.song.id,
+          replayRequestId: item.replayRequestId || item.song?.replayRequestId || null
+        }))
+      },
+      ...auth.getAuthConfig()
+    })
 
     hasChanges.value = false
     await loadData() // 重新加载数据

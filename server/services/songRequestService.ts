@@ -27,6 +27,7 @@ import { SERVER_ERROR_CODES, SONG_DURATION_MAX_SECONDS, SONG_DURATION_MIN_SECOND
 import { normalizeForMatch } from '~~/server/utils/song-name-normalize'
 import { resolveSubmissionRestrictionPolicy } from '~~/server/utils/submission-restriction-policy'
 import { z } from 'zod'
+import { readSelection } from '~~/server/utils/music-source-plugins/resolver'
 
 type SongRequestUser = {
   id: number
@@ -34,9 +35,17 @@ type SongRequestUser = {
 }
 
 const songRequestBodySchema = z.object({
+  selectionToken: z.string().max(200000).optional(),
   title: z.string().trim().min(1, '歌曲名称不能为空').max(200, '歌曲名称不能超过200个字符'),
   artist: z.string().trim().min(1, '艺术家不能为空').max(200, '艺术家不能超过200个字符'),
-  cover: z.string().trim().max(1000, '封面地址不能超过1000个字符').optional().nullable(),
+  cover: z
+    .string()
+    .trim()
+    .max(1000, '封面地址不能超过1000个字符')
+    // 封面必须是完整 http(s) 链接，防止音源返回 pic_id 等片段被误存导致封面无法显示
+    .refine((value) => value === '' || /^https?:\/\//i.test(value), '封面地址必须以 http(s):// 开头')
+    .optional()
+    .nullable(),
   musicPlatform: z.string().trim().max(50, '音乐平台标识不能超过50个字符').optional().nullable(),
   musicId: z.string().trim().max(200, '音乐 ID 不能超过200个字符').optional().nullable(),
   bilibiliCid: z.string().trim().max(100, 'Bilibili CID 不能超过100个字符').optional().nullable(),
@@ -71,6 +80,9 @@ export async function requestSongForUser(event: any, user: SongRequestUser, body
   }
 
   const requestBody = parsedBody.data
+  const musicSourceData = requestBody.selectionToken
+    ? readSelection(requestBody.selectionToken, user.id, requestBody.musicPlatform || undefined, requestBody.musicId || undefined)
+    : null
 
   try {
     // 标准化后再比较，避免同一首歌因标点或空格差异绕过重复检查。
@@ -476,6 +488,7 @@ export async function requestSongForUser(event: any, user: SongRequestUser, body
           cover: requestBody.cover || null,
           musicPlatform: isBilibili ? 'bilibili' : requestBody.musicPlatform || null,
           musicId: finalMusicId,
+          musicSourceData,
           cardCodeId: providedCardCodeId || null,
           playUrl: requestBody.playUrl || null,
           durationSeconds: requestBody.durationSeconds || null,

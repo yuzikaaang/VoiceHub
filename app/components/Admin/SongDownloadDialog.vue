@@ -408,7 +408,7 @@
                     <!-- 单个预下载/删除按钮 -->
                     <button
                       v-if="getUsablePreload(song.song.id, selectedQuality)"
-                      class="p-1.5 rounded-lg hover:bg-error-10 text-text-disabled hover:text-error transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg hover:bg-error-10 text-text-disabled hover:text-error transition-colors"
                       :title="locale.deleteCache"
                       @click.stop="removePreloaded(song.song.id)"
                     >
@@ -416,7 +416,7 @@
                     </button>
                     <button
                       v-else
-                      class="p-1.5 rounded-lg hover:bg-primary-10 text-text-disabled hover:text-primary transition-colors"
+                      class="flex items-center justify-center p-1.5 rounded-lg hover:bg-primary-10 text-text-disabled hover:text-primary transition-colors"
                       :title="locale.preloadSong"
                       @click.stop="preloadSong(song.song)"
                     >
@@ -523,7 +523,7 @@
                 @click="startDownload"
               >
                 <Download v-if="!downloading" class="w-3.5 h-3.5" />
-                <AppSpinner :size="14" />
+                <AppSpinner v-else :size="14" color="white" />
                 {{
                   downloading
                     ? currentTaskType === 'merge'
@@ -546,6 +546,7 @@
 import { computed, ref, watch, reactive, onUnmounted } from 'vue'
 import { useAudioQuality } from '~/composables/useAudioQuality'
 import { getMusicUrlResult } from '~/utils/musicUrl'
+import { persistQqMusicCookie } from '~/utils/qqCookie'
 import { useLocale } from '~/utils/locale'
 import AppSpinner from '~/components/UI/Common/AppSpinner.vue'
 import {
@@ -713,6 +714,8 @@ const getDownloadResolveOptions = (song, quality, excludeSources = [], ignorePro
 
   return {
     unblock: isPodcast ? false : undefined,
+    // 下载要在浏览器里 fetch 文件体，插件直链多为跨域 CDN，强制走服务端媒体代理
+    preferProxy: true,
     quality,
     mediaId:
       song?.sourceInfo?.strMediaMid ||
@@ -723,7 +726,8 @@ const getDownloadResolveOptions = (song, quality, excludeSources = [], ignorePro
     musicInfo: {
       name: song?.title,
       artist: song?.artist,
-      album: song?.album || undefined
+      album: song?.album || undefined,
+      rawItem: song
     }
   }
 }
@@ -743,6 +747,10 @@ const ensureQqVipFlag = async () => {
           body: { cookie }
         })
         const data = res?.data || {}
+        // 校验失败时服务端可能已续期，落盘新 Cookie 避免后续仍用旧凭据
+        if (data.cookie) {
+          persistQqMusicCookie(data.cookie)
+        }
         if (data.valid && typeof data.isVip === 'boolean') {
           localStorage.setItem('qq_music_vip', data.isVip ? '1' : '0')
         }
@@ -1746,7 +1754,9 @@ const processAndMergeAudioStreaming = async (selectedSongsList, config) => {
       } catch (error) {
         console.error(`写入合并文件失败: ${song.title}`, error)
         const errorText = getErrorMessage(error)
-        throw new Error(getLocaleText('writeMergedFileFailed', errorText, errorText))
+        throw new Error(getLocaleText('writeMergedFileFailed', errorText, errorText), {
+          cause: error
+        })
       } finally {
         activeDownloads.delete(song.id)
         downloadedCount.value++

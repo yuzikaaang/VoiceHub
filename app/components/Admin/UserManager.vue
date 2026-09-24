@@ -4,7 +4,9 @@
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mt-4">
       <div>
         <h2 class="text-2xl font-black text-text-primary tracking-tight">{{ locale.title }}</h2>
-        <p class="text-xs text-text-tertiary mt-1">{{ formatMessage(locale.subtitle, totalUsers) }}</p>
+        <p class="text-xs text-text-tertiary mt-1">
+          {{ showArchived ? formatMessage(locale.archivedSubtitle, archivedCount) : formatMessage(locale.subtitle, totalUsers) }}
+        </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button
@@ -366,8 +368,8 @@
                     class="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all action-buttons"
                   >
                     <button
-                      :disabled="isSelf(user)"
-                      class="p-2 bg-bg-primary border border-border-secondary rounded-xl text-text-tertiary hover:text-primary transition-colors disabled:opacity-20 disabled:cursor-not-allowed action-btn"
+                      :disabled="!canManageUser(user)"
+                      class="flex items-center justify-center p-2 bg-bg-primary border border-border-secondary rounded-xl text-text-tertiary hover:text-primary transition-colors disabled:opacity-20 disabled:cursor-not-allowed action-btn"
                       :title="locale.actions.editUser"
                       @click="editUser(user)"
                     >
@@ -389,7 +391,7 @@
                       <Music :size="13" />
                     </button>
                     <button
-                      :disabled="isSelf(user)"
+                      :disabled="!canManageUser(user)"
                       class="p-2 bg-bg-primary border border-border-secondary rounded-xl text-text-tertiary hover:text-warning transition-colors disabled:opacity-20 disabled:cursor-not-allowed action-btn flex items-center justify-center"
                       :title="locale.actions.resetPassword"
                       @click="resetPassword(user)"
@@ -397,8 +399,8 @@
                       <Lock :size="13" />
                     </button>
                     <button
-                      :disabled="isSelf(user)"
-                      class="p-2 bg-bg-primary border border-border-secondary rounded-xl text-text-tertiary hover:text-error transition-colors disabled:opacity-20 disabled:cursor-not-allowed action-btn"
+                      :disabled="!canManageUser(user)"
+                      class="flex items-center justify-center p-2 bg-bg-primary border border-border-secondary rounded-xl text-text-tertiary hover:text-error transition-colors disabled:opacity-20 disabled:cursor-not-allowed action-btn"
                       :title="locale.actions.deleteUser"
                       @click="confirmDeleteUser(user)"
                     >
@@ -532,7 +534,7 @@
 
             <div class="flex gap-2 action-buttons">
               <button
-                :disabled="isSelf(user)"
+                :disabled="!canManageUser(user)"
                 class="flex-1 py-2.5 bg-bg-primary border border-border-secondary rounded-lg text-text-tertiary flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest active:bg-primary-hover active:text-text-primary transition-colors disabled:opacity-20 action-btn"
                 @click="editUser(user)"
               >
@@ -552,15 +554,15 @@
                 <Music :size="12" /> {{ locale.actions.records }}
               </button>
               <button
-                :disabled="isSelf(user)"
+                :disabled="!canManageUser(user)"
                 class="flex-1 py-2.5 bg-bg-primary border border-border-secondary rounded-lg text-text-tertiary flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest active:bg-warning active:text-text-primary transition-colors disabled:opacity-20 action-btn"
                 @click="resetPassword(user)"
               >
                 <Lock :size="12" /> {{ locale.actions.reset }}
               </button>
               <button
-                :disabled="isSelf(user)"
-                class="px-3 py-2.5 bg-bg-primary border border-border-secondary rounded-lg text-text-tertiary active:bg-error active:text-text-primary transition-colors disabled:opacity-20 action-btn"
+                :disabled="!canManageUser(user)"
+                class="flex items-center justify-center px-3 py-2.5 bg-bg-primary border border-border-secondary rounded-lg text-text-tertiary active:bg-error active:text-text-primary transition-colors disabled:opacity-20 action-btn"
                 @click="confirmDeleteUser(user)"
               >
                 <Trash2 :size="14" />
@@ -611,7 +613,7 @@
                 <p class="text-xs text-text-tertiary mt-1 ml-13">{{ locale.form.desc }}</p>
               </div>
               <button
-                class="p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
+                class="flex items-center justify-center p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
                 @click="closeModal"
               >
                 <X :size="20" />
@@ -631,6 +633,7 @@
                     />
                     <input
                       v-model="userForm.name"
+                      autocomplete="off"
                       class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-primary-30 transition-all text-text-primary"
                       :placeholder="locale.form.namePlaceholder"
                       type="text"
@@ -648,6 +651,7 @@
                     />
                     <input
                       v-model="userForm.username"
+                      autocomplete="off"
                       class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-primary-30 transition-all text-text-primary"
                       :placeholder="locale.form.usernamePlaceholder"
                       type="text"
@@ -667,6 +671,7 @@
                   />
                   <input
                     v-model="userForm.password"
+                    autocomplete="new-password"
                     class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-primary-30 transition-all text-text-primary"
                     :placeholder="locale.form.passwordPlaceholder"
                     type="password"
@@ -713,6 +718,7 @@
                     />
                     <input
                       v-model="userForm.grade"
+                      autocomplete="off"
                       class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-primary-30 transition-all text-text-primary"
                       :placeholder="locale.form.gradePlaceholder"
                       type="text"
@@ -730,6 +736,7 @@
                     />
                     <input
                       v-model="userForm.class"
+                      autocomplete="off"
                       class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-primary-30 transition-all text-text-primary"
                       :placeholder="locale.form.classPlaceholder"
                       type="text"
@@ -811,6 +818,7 @@
                   />
                   <input
                     v-model="passwordForm.password"
+                    autocomplete="new-password"
                     class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-warning-30 transition-all text-text-primary"
                     :placeholder="locale.resetPasswordModal.newPasswordPlaceholder"
                     type="password"
@@ -828,6 +836,7 @@
                   />
                   <input
                     v-model="passwordForm.confirmPassword"
+                    autocomplete="new-password"
                     class="w-full bg-bg-primary border border-border-secondary rounded-2xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:border-warning-30 transition-all text-text-primary"
                     :placeholder="locale.resetPasswordModal.confirmPasswordPlaceholder"
                     type="password"
@@ -899,7 +908,7 @@
                 </p>
               </div>
               <button
-                class="p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
+                class="flex items-center justify-center p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
                 @click="closeImportModal"
               >
                 <X :size="20" />
@@ -1163,7 +1172,7 @@
                 <p class="text-xs text-text-tertiary mt-1 ml-13">{{ locale.detail.desc }}</p>
               </div>
               <button
-                class="p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
+                class="flex items-center justify-center p-3 bg-bg-tertiary-50 hover:bg-bg-tertiary text-text-tertiary hover:text-text-primary rounded-2xl transition-all"
                 @click="closeUserDetailModal"
               >
                 <X :size="20" />
@@ -1614,7 +1623,6 @@ import {
   LogOut,
   Mail,
   Plus,
-  ArrowLeft,
   Filter,
   Download,
   Upload,
@@ -1636,8 +1644,10 @@ import BatchUpdateModal from '~/components/Admin/BatchUpdateModal.vue'
 import UserApprovalModal from '~/components/Admin/UserApprovalModal.vue'
 import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 import { useLocale } from '~/utils/locale'
+import { useServerErrors } from '~/composables/useLocaleText'
 import { getOAuthProviderName, getAggregateOAuthLoginTypeName, getProviderDisplayName } from '~/utils/oauth'
 import { GRADE_ORDER } from '~/utils/gradeClassWeights'
+import { isArchivedStatus } from '~/utils/user-archive'
 
 const { admin, currentLocale } = useLocale()
 const locale = computed(() => admin.value?.userManager || {})
@@ -1668,6 +1678,9 @@ const roleFilter = ref('')
 const statusFilter = ref('')
 const gradeFilter = ref('')
 const classFilter = ref('')
+// 归档视图：graduate/withdrawn 状态账号不在默认列表直接展示，经组织树底部归档节点进入
+const showArchived = ref(false)
+const archivedCount = ref(0)
 const sortBy = ref('id')
 const sortOrder = ref('asc')
 const currentPage = ref(1)
@@ -1713,13 +1726,22 @@ const allRoles = computed(() => [
 // 筛选选项
 const roleFilterOptions = computed(() => [{ name: '', displayName: locale.value?.allRoles || '全部角色' }, ...allRoles.value])
 
-const statusFilterOptions = computed(() => [
-  { label: locale.value?.allStatus || '全部状态', value: '' },
-  { label: getStatusName('active'), value: 'active' },
-  { label: getStatusName('pending'), value: 'pending' },
-  { label: getStatusName('withdrawn'), value: 'withdrawn' },
-  { label: getStatusName('graduate'), value: 'graduate' }
-])
+// 状态筛选：普通视图不提供 graduate/withdrawn 选项（已归档账号默认隐藏）；归档视图仅这两类
+const statusFilterOptions = computed(() => {
+  const options = [{ label: locale.value?.allStatus || '全部状态', value: '' }]
+  if (showArchived.value) {
+    options.push(
+      { label: getStatusName('graduate'), value: 'graduate' },
+      { label: getStatusName('withdrawn'), value: 'withdrawn' }
+    )
+  } else {
+    options.push(
+      { label: getStatusName('active'), value: 'active' },
+      { label: getStatusName('pending'), value: 'pending' }
+    )
+  }
+  return options
+})
 
 const userStatusOptions = computed(() => [
   { label: getStatusName('activeAccess'), value: 'active' },
@@ -1803,6 +1825,7 @@ const passwordForm = ref({
 
 // 服务
 const auth = useAuth()
+const { localize } = useServerErrors()
 
 // 判断是否为当前登录用户
 const isSelf = (user) => {
@@ -1814,14 +1837,36 @@ const isSuperAdmin = computed(() => {
   return auth.user.value?.role === 'SUPER_ADMIN'
 })
 
+// 普通管理员身份
+const isAdmin = computed(() => {
+  return auth.user.value?.role === 'ADMIN'
+})
+
+// 是否允许对目标用户执行管理操作（编辑/重置密码/删除），与后端越级保护一致
+const canManageUser = (user) => {
+  if (!user || isSelf(user)) return false
+  // 普通管理员不能操作超级管理员
+  return isSuperAdmin.value || user.role !== 'SUPER_ADMIN'
+}
+
 const availableRoles = computed(() => {
+  let roles
   if (isSuperAdmin.value) {
     // 超级管理员可以分配除自己以外的所有角色
-    return allRoles.value.filter((role) => role.name !== 'SUPER_ADMIN')
+    roles = allRoles.value.filter((role) => role.name !== 'SUPER_ADMIN')
+  } else if (isAdmin.value) {
+    // 管理员只能分配用户和歌曲管理员角色（与后端用户接口的角色限制一致）
+    roles = allRoles.value.filter((role) => ['USER', 'SONG_ADMIN'].includes(role.name))
   } else {
     // 其他角色不能分配角色，返回空数组
     return []
   }
+  // 保留目标用户当前角色，避免当前值不在选项中时下拉显示裸值
+  const currentRole = editingUser.value?.role
+  if (currentRole && !roles.some((role) => role.name === currentRole)) {
+    roles = [...roles, ...allRoles.value.filter((role) => role.name === currentRole)]
+  }
+  return roles
 })
 
 const getUserDisplayName = (user) => {
@@ -1871,52 +1916,23 @@ const sortByLabel = (a, b) => {
   return a.label.localeCompare(b.label, 'zh-CN', { numeric: true })
 }
 
-const getStageStatus = (stageLabel) => {
-  if (stageLabel === locale.value?.organization?.stages?.graduate) return 'graduate'
-  if (stageLabel === locale.value?.organization?.stages?.withdrawn) return 'withdrawn'
-  if (stageLabel) return 'active'
-  return ''
-}
-
-const getStageLabelByStatus = (status) => {
-  if (status === 'graduate') return locale.value?.organization?.stages?.graduate || '已毕业'
-  if (status === 'withdrawn') return locale.value?.organization?.stages?.withdrawn || '已退学'
-  if (status === 'active' && gradeFilter.value) {
-    return getStageLabel({ status: 'active', grade: gradeFilter.value })
-  }
-  return ''
-}
-
 const toUserFilterQuery = (value, unsetLabel) => {
   if (!value) return undefined
   return value === unsetLabel ? UNSET_FILTER_VALUE : value
 }
 
-const userTree = computed(() => {
-  const stageMap = new Map()
+// 按年级/班级将用户归组为树节点（学段与归档目录共用）
+const buildGradeNodes = (users, stageKey) => {
+  const gradeMap = new Map()
 
-  for (const user of treeUsers.value) {
-    const stageLabel = getStageLabel(user)
+  for (const user of users) {
     const gradeLabel = normalizeTreeValue(user.grade, unsetGradeLabel.value)
     const classLabel = normalizeTreeValue(user.class, unsetClassLabel.value)
-    const stageKey = `stage:${stageLabel}`
     const gradeKey = `${stageKey}:grade:${gradeLabel}`
     const classKey = `${gradeKey}:class:${classLabel}`
 
-    if (!stageMap.has(stageKey)) {
-      stageMap.set(stageKey, {
-        key: stageKey,
-        label: stageLabel,
-        count: 0,
-        grades: new Map()
-      })
-    }
-
-    const stage = stageMap.get(stageKey)
-    stage.count += 1
-
-    if (!stage.grades.has(gradeKey)) {
-      stage.grades.set(gradeKey, {
+    if (!gradeMap.has(gradeKey)) {
+      gradeMap.set(gradeKey, {
         key: gradeKey,
         label: gradeLabel,
         count: 0,
@@ -1924,7 +1940,7 @@ const userTree = computed(() => {
       })
     }
 
-    const grade = stage.grades.get(gradeKey)
+    const grade = gradeMap.get(gradeKey)
     grade.count += 1
 
     if (!grade.classes.has(classKey)) {
@@ -1941,28 +1957,54 @@ const userTree = computed(() => {
     classNode.users.push(user)
   }
 
+  return Array.from(gradeMap.values())
+    .map((grade) => ({
+      ...grade,
+      classes: Array.from(grade.classes.values())
+        .map((classNode) => ({
+          ...classNode,
+          users: classNode.users.sort((a, b) =>
+            getUserDisplayName(a).localeCompare(getUserDisplayName(b), 'zh-CN', {
+              numeric: true
+            })
+          )
+        }))
+        .sort(sortByLabel)
+    }))
+    .sort(sortTreeLabels)
+}
+
+const buildStageNodes = (users) => {
+  const stageMap = new Map()
+
+  for (const user of users) {
+    const stageLabel = getStageLabel(user)
+    const stageKey = `stage:${stageLabel}`
+
+    if (!stageMap.has(stageKey)) {
+      stageMap.set(stageKey, {
+        key: stageKey,
+        label: stageLabel,
+        count: 0,
+        users: []
+      })
+    }
+
+    const stage = stageMap.get(stageKey)
+    stage.count += 1
+    stage.users.push(user)
+  }
+
   return Array.from(stageMap.values())
     .map((stage) => ({
-      ...stage,
-      grades: Array.from(stage.grades.values())
-        .map((grade) => ({
-          ...grade,
-          classes: Array.from(grade.classes.values())
-            .map((classNode) => ({
-              ...classNode,
-              users: classNode.users.sort((a, b) =>
-                getUserDisplayName(a).localeCompare(getUserDisplayName(b), 'zh-CN', {
-                  numeric: true
-                })
-              )
-            }))
-            .sort(sortByLabel)
-        }))
-        .sort(sortTreeLabels)
+      key: stage.key,
+      label: stage.label,
+      count: stage.count,
+      grades: buildGradeNodes(stage.users, stage.key)
     }))
     .sort((a, b) => {
       const stages = locale.value?.organization?.stages || {}
-      const stageOrder = [stages.junior, stages.senior, stages.university, stages.staff, stages.other, stages.withdrawn, stages.graduate]
+      const stageOrder = [stages.junior, stages.senior, stages.university, stages.staff, stages.other]
       const indexA = stageOrder.indexOf(a.label)
       const indexB = stageOrder.indexOf(b.label)
       const weightA = indexA === -1 ? 50 : indexA
@@ -1971,6 +2013,24 @@ const userTree = computed(() => {
       if (weightA !== weightB) return weightA - weightB
       return a.label.localeCompare(b.label, 'zh-CN', { numeric: true })
     })
+}
+
+const archiveStageLabel = computed(() => locale.value?.archivedUsers || '已归档用户')
+
+const userTree = computed(() => {
+  const stages = buildStageNodes(treeUsers.value.filter((user) => !isArchivedStatus(user.status)))
+  const archivedUsers = treeUsers.value.filter((user) => isArchivedStatus(user.status))
+  const stageKey = `stage:${archiveStageLabel.value}`
+
+  // 归档目录固定挂在树末尾，不在学段中直接展示；点击节点名进入归档视图
+  stages.push({
+    key: stageKey,
+    label: archiveStageLabel.value,
+    count: archivedUsers.length,
+    grades: buildGradeNodes(archivedUsers, stageKey)
+  })
+
+  return stages
 })
 
 const activeOrgFilterLabel = computed(() => {
@@ -1992,6 +2052,8 @@ const activeOrgFilterLabel = computed(() => {
 })
 
 let loadUsersDebounceTimer = null
+// 视图切换重置筛选后由切换逻辑统一重载列表，置位抑制监听器的重复加载
+let suppressNextFilterReload = false
 
 // 监听搜索和过滤条件变化
 watch(
@@ -1999,6 +2061,11 @@ watch(
   () => {
     if (loadUsersDebounceTimer) {
       clearTimeout(loadUsersDebounceTimer)
+    }
+
+    if (suppressNextFilterReload) {
+      suppressNextFilterReload = false
+      return
     }
 
     loadUsersDebounceTimer = setTimeout(() => {
@@ -2014,15 +2081,6 @@ watch(
 // 监听页码变化
 watch(currentPage, (newPage) => {
   loadUsers(newPage, pageSize.value)
-})
-
-watch(statusFilter, (newStatus) => {
-  if (!treeFilterLabel.value) return
-
-  const expectedStatus = getStageStatus(treeFilterLabel.value)
-  if (expectedStatus && newStatus !== expectedStatus) {
-    treeFilterLabel.value = getStageLabelByStatus(newStatus)
-  }
 })
 
 // 方法
@@ -2254,6 +2312,8 @@ const expandDefaultTreeNodes = () => {
   const next = new Set(expandedTreeNodes.value)
 
   userTree.value.forEach((stage) => {
+    // 归档节点默认折叠，点击节点名进入归档视图，手动展开查看目录
+    if (stage.label === archiveStageLabel.value) return
     next.add(stage.key)
     stage.grades.forEach((grade) => {
       next.add(grade.key)
@@ -2276,11 +2336,9 @@ const isStageFilterActive = (stageLabel) => {
 }
 
 const handleStageClick = (stage) => {
-  if (
-    stage.label === locale.value?.organization?.stages?.withdrawn ||
-    stage.label === locale.value?.organization?.stages?.graduate
-  ) {
-    applyTreeFilter('', '', stage.label)
+  // 归档节点点击进入归档视图，其余学段仅展开/折叠
+  if (stage.label === archiveStageLabel.value) {
+    applyUserScope(true, { stageLabel: stage.label })
     return
   }
 
@@ -2288,26 +2346,62 @@ const handleStageClick = (stage) => {
 }
 
 const applyTreeFilter = (grade, className = '', stageLabel = '') => {
-  gradeFilter.value = grade
-  classFilter.value = className
-  treeFilterLabel.value = stageLabel
-
-  // 仅已退学/已毕业阶段联动状态筛选，其他阶段保留已选状态
-  const nextStatus = getStageStatus(stageLabel)
-  if (nextStatus === 'withdrawn' || nextStatus === 'graduate') {
-    statusFilter.value = nextStatus
-  }
-
-  searchQuery.value = ''
+  // 归档目录下的年级/班级点击进入归档视图并定位范围
+  applyUserScope(stageLabel === archiveStageLabel.value, { grade, className, stageLabel })
 }
 
 const clearTreeFilter = () => {
+  if (showArchived.value) {
+    applyUserScope(false, { stageLabel: '' })
+    return
+  }
   gradeFilter.value = ''
   classFilter.value = ''
   if (treeFilterLabel.value) {
     statusFilter.value = ''
   }
   treeFilterLabel.value = ''
+}
+
+// 统一设置用户视图与树范围：重置筛选与分页，并保证列表恰好重载一次
+const applyUserScope = (archived, { grade = '', className = '', stageLabel = '' } = {}) => {
+  const viewChanged = showArchived.value !== archived
+  const filtersChanged =
+    searchQuery.value !== '' ||
+    gradeFilter.value !== grade ||
+    classFilter.value !== className ||
+    (viewChanged && (roleFilter.value !== '' || statusFilter.value !== ''))
+  const scopeChanged = treeFilterLabel.value !== stageLabel
+
+  if (!viewChanged && !filtersChanged && !scopeChanged && currentPage.value === 1) {
+    return
+  }
+
+  // 有筛选值将被重置时筛选监听器必触发一次，置位抑制避免重复请求
+  if (filtersChanged) {
+    if (loadUsersDebounceTimer) {
+      clearTimeout(loadUsersDebounceTimer)
+      loadUsersDebounceTimer = null
+    }
+    suppressNextFilterReload = true
+  }
+
+  // 页码保持 1 时页码监听器不触发，需显式重载；否则交给页码监听器
+  const reloadNow = currentPage.value === 1
+  showArchived.value = archived
+  searchQuery.value = ''
+  if (viewChanged) {
+    // 两个视图的状态筛选选项不同，切换视图时一并重置
+    roleFilter.value = ''
+    statusFilter.value = ''
+  }
+  gradeFilter.value = grade
+  classFilter.value = className
+  treeFilterLabel.value = stageLabel
+  currentPage.value = 1
+  if (reloadNow) {
+    void loadUsers(1, pageSize.value)
+  }
 }
 
 const openTreeUser = async (treeUser) => {
@@ -2374,18 +2468,21 @@ const saveUser = async () => {
       })
     }
 
+    // 先缓存是否编辑态：closeModal 会清空 editingUser，通知文案需在清空前判定
+    const wasEditing = Boolean(editingUser.value)
+
     await Promise.all([loadUserTree(), loadUsers()])
     closeModal()
 
     if (window.$showNotification) {
       window.$showNotification(
-        editingUser.value ? locale.value.notifications.updateSuccess : locale.value.notifications.createSuccess,
+        wasEditing ? locale.value.notifications.updateSuccess : locale.value.notifications.createSuccess,
         'success'
       )
     }
   } catch (error) {
       console.error('保存用户失败:', error)
-      formError.value = getErrorDetail(error) || locale.value.errors.saveFailed
+      formError.value = localize(error, locale.value.errors.saveFailed)
     } finally {
     saving.value = false
   }
@@ -2445,7 +2542,8 @@ const loadUsers = async (page = 1, limit = 100) => {
         grade: toUserFilterQuery(gradeFilter.value, unsetGradeLabel.value),
         class: toUserFilterQuery(classFilter.value, unsetClassLabel.value),
         sortBy: sortBy.value,
-        sortOrder: sortOrder.value
+        sortOrder: sortOrder.value,
+        archived: showArchived.value ? '1' : '0'
       },
       ...auth.getAuthConfig()
     })
@@ -2484,6 +2582,7 @@ const loadUserTree = async () => {
     })
 
     treeUsers.value = response.treeUsers || []
+    archivedCount.value = response.archivedCount || 0
     expandDefaultTreeNodes()
   } catch (error) {
     console.error('加载组织结构失败:', error)

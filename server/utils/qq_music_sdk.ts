@@ -15,6 +15,7 @@ import {
 } from '@sansenjian/qq-music-api/services'
 import { txHeaders, txRequest, upgradeTxAudioUrl, zzcSign } from '~~/server/utils/native_tx'
 import { getServerTimestamp } from '~~/server/utils/serverTime'
+import { randomUUID } from 'node:crypto'
 import { inflateRawSync, inflateSync, unzipSync } from 'node:zlib'
 
 type QqSdkResponse = {
@@ -40,7 +41,11 @@ const QQ_SDK_QUALITY_MAP: Record<string, string> = {
 const QQ_AUTH_COOKIE_KEYS = ['qqmusic_key', 'qm_keyst', 'music_key']
 const QQ_MUSICU_URL = 'https://u.y.qq.com/cgi-bin/musicu.fcg'
 const QQ_MUSICS_URL = 'https://u.y.qq.com/cgi-bin/musics.fcg'
-const QQ_PLAY_GUID = '1429839143'
+// CDN 调度缓存；失败时短暂缓存空列表，避免每次播放都重试
+let qqCdnCache: { sips: string[]; expireAt: number } | null = null
+const QQ_CDN_FALLBACK_DOMAIN = 'https://isure.stream.qqmusic.qq.com/'
+const QQ_CDN_CACHE_TTL = 60 * 60 * 1000
+const QQ_CDN_FAIL_TTL = 60 * 1000
 const QQ_COMMON_QUERY = {
   g_tk: '1124214810',
   hostUin: '0',
@@ -290,10 +295,11 @@ const requestQqOfficialVkey = async (
 const parseQqOfficialPlayUrl = (
   response: Record<string, any> | undefined,
   filenames: string[],
-  guid: string
+  guid: string,
+  cdnSip: string
 ) => {
   const data = response?.req_0?.data
-  const domain = pickPlayableDomain(data?.sip)
+  const domain = cdnSip || pickPlayableDomain(data?.sip) || QQ_CDN_FALLBACK_DOMAIN
   const midurlinfo = Array.isArray(data?.midurlinfo) ? data.midurlinfo : []
 
   // 按候选顺位取第一个拿到直链的音质（降级命中）
@@ -301,6 +307,8 @@ const parseQqOfficialPlayUrl = (
     .map((filename) => midurlinfo.find((item: Record<string, any>) => item?.filename === filename))
     .find((item) => item && (item.purl || item.vkey))
   info = info || midurlinfo.find((item: Record<string, any>) => item?.purl || item?.vkey)
+  // 未命中可播放条目时回退首个请求档位，保留拒绝码用于诊断
+  info = info || midurlinfo.find((item: Record<string, any>) => item?.filename === filenames[0])
   const url = buildQqOfficialPlayUrl(domain, info, guid)
 
   return {
@@ -309,32 +317,185 @@ const parseQqOfficialPlayUrl = (
   }
 }
 
+// 登录态注入 comm 的 qq/authst/tmeLoginType，已登录账号才能解析 VIP/高音质直链
+const resolveQqLoginType = (cookieObject: Record<string, string>, authst: string) => {
+  const raw = Number(cookieObject.tmeLoginType)
+  if (Number.isFinite(raw) && raw > 0) return raw
+  return authst.startsWith('W_X') ? 1 : 2
+}
+
+// 续期所需字段的候选键名：网页 Cookie（psrf_*）与扫码会话（wx_*）命名不同，逐个兼容取值
+const QQ_REFRESH_FIELDS = {
+  openid: ['psrf_qqopenid', 'wx_openid', 'wxopenid'],
+  refreshToken: ['psrf_qqrefresh_token', 'wxrefresh_token'],
+  unionid: ['psrf_qqunionid', 'wx_unionid', 'wxunionid'],
+  accessToken: ['psrf_qqaccess_token'],
+  expiresAt: ['psrf_access_token_expiresAt'],
+  refreshKey: ['qm_refresh_key']
+}
+
+const pickCookieField = (cookieObject: Record<string, string>, keys: string[]) => {
+  for (const key of keys) {
+    if (cookieObject[key]) return cookieObject[key]
+  }
+  return ''
+}
+
+type QqRefreshCredentialData = {
+  musickey?: string
+  musicid?: number | string
+  str_musicid?: string
+  refresh_key?: string
+  refresh_token?: string
+  access_token?: string
+  encryptUin?: string
+  openid?: string
+  unionid?: string
+  expired_at?: number
+  musickeyCreateTime?: number
+  loginType?: number
+}
+
+export type QqRefreshResult = {
+  /** 是否成功换到新凭据 */
+  refreshed: boolean
+  /** 续期成功时为合并后的新 Cookie，失败时原样返回 */
+  cookie: string
+}
+
+// 同一会话的并发续期共享一次请求，避免同时失效时重复刷新
+const qqRefreshInflight = new Map<string, Promise<QqRefreshResult>>()
+
+/**
+ * 用 refresh_token 向 LoginServer 续期 musickey（loginMode=2）。
+ * 仅在 Cookie 同时具备会话密钥与 refresh_token 时可用，缺少续期凭据的扫码会话会直接跳过。
+ */
+export const refreshQqCredential = async ({
+  cookie
+}: {
+  cookie?: string
+}): Promise<QqRefreshResult> => {
+  const normalizedCookie = normalizeQqCookie(cookie)
+  const cookieObject = parseCookieObject(normalizedCookie)
+  const authst = cookieObject.qqmusic_key || cookieObject.qm_keyst || cookieObject.music_key || ''
+  const uin = resolveQqVkeyUin(cookieObject)
+  const refreshToken = pickCookieField(cookieObject, QQ_REFRESH_FIELDS.refreshToken)
+
+  if (!normalizedCookie || !authst || uin === '0' || !refreshToken) {
+    return { refreshed: false, cookie: normalizedCookie }
+  }
+
+  const inflightKey = `${uin}:${authst}`
+  const inflight = qqRefreshInflight.get(inflightKey)
+  if (inflight) return inflight
+
+  const task = (async (): Promise<QqRefreshResult> => {
+    const loginType = resolveQqLoginType(cookieObject, authst)
+    const openid = pickCookieField(cookieObject, QQ_REFRESH_FIELDS.openid)
+    const unionid = pickCookieField(cookieObject, QQ_REFRESH_FIELDS.unionid)
+    const refreshKey = pickCookieField(cookieObject, QQ_REFRESH_FIELDS.refreshKey)
+
+    const param =
+      loginType === 1
+        ? {
+            openid,
+            refresh_token: refreshToken,
+            str_musicid: cookieObject.qm_str_musicid || uin,
+            musickey: authst,
+            unionid,
+            refresh_key: refreshKey,
+            loginMode: 2
+          }
+        : {
+            openid,
+            access_token: pickCookieField(cookieObject, QQ_REFRESH_FIELDS.accessToken),
+            refresh_token: refreshToken,
+            expired_in: Number(pickCookieField(cookieObject, QQ_REFRESH_FIELDS.expiresAt)) || 0,
+            musicid: Number(uin) || 0,
+            musickey: authst,
+            refresh_key: refreshKey,
+            loginMode: 2
+          }
+
+    try {
+      const resp: any = await callQqMusicu({
+        module: 'music.login.LoginServer',
+        method: 'Login',
+        param,
+        cookie: normalizedCookie,
+        extraComm: { qq: uin, tmeLoginType: loginType }
+      })
+      // 上游按请求键回包，两种形态都做兼容
+      const inner = resp?.req_1 || resp?.request || {}
+      const data: QqRefreshCredentialData | undefined = inner?.data
+      if (Number(resp?.code) !== 0 || Number(inner?.code) !== 0 || !data?.musickey) {
+        console.warn('[qq_music_sdk] 凭据续期被拒绝:', inner?.code ?? resp?.code)
+        return { refreshed: false, cookie: normalizedCookie }
+      }
+
+      const merged: Record<string, string> = { ...cookieObject }
+      merged.qqmusic_key = data.musickey
+      merged.qm_keyst = data.musickey
+      merged.tmeLoginType = String(data.loginType || loginType)
+      const musicId = String(data.str_musicid || data.musicid || '').replace(/^o/i, '')
+      if (musicId) {
+        merged.uin = musicId
+        merged.qqmusic_uin = musicId
+      }
+      if (data.encryptUin) merged.euin = data.encryptUin
+      if (data.openid) merged[loginType === 1 ? 'wx_openid' : 'psrf_qqopenid'] = data.openid
+      if (data.unionid) merged[loginType === 1 ? 'wx_unionid' : 'psrf_qqunionid'] = data.unionid
+      if (data.refresh_token) {
+        merged[loginType === 1 ? 'wxrefresh_token' : 'psrf_qqrefresh_token'] = data.refresh_token
+      }
+      if (data.access_token) merged.psrf_qqaccess_token = data.access_token
+      if (data.expired_at) merged.psrf_access_token_expiresAt = String(data.expired_at)
+      if (data.musickeyCreateTime) {
+        merged.psrf_musickey_createtime = String(data.musickeyCreateTime)
+      }
+      // 网页 Cookie 无此字段，首次续期后写入供后续续期复用
+      if (data.refresh_key) merged.qm_refresh_key = data.refresh_key
+
+      return { refreshed: true, cookie: serializeCookieObject(merged) }
+    } catch (error: any) {
+      console.warn('[qq_music_sdk] 凭据续期失败:', error?.message || error)
+      return { refreshed: false, cookie: normalizedCookie }
+    } finally {
+      qqRefreshInflight.delete(inflightKey)
+    }
+  })()
+
+  qqRefreshInflight.set(inflightKey, task)
+  return task
+}
+
 const createQqOfficialVkeyPayload = ({
   songmid,
   filenames,
   guid,
   uin,
-  authst
+  authst,
+  tmeLoginType
 }: {
   songmid: string
   filenames: string[]
   guid: string
   uin: string
   authst?: string
+  tmeLoginType?: number
 }) => {
+  const loginComm = authst ? { qq: uin, authst, tmeLoginType: tmeLoginType || 2 } : {}
   return {
     req_0: {
-      module: 'vkey.GetVkeyServer',
-      method: 'CgiGetVkey',
+      module: 'music.vkey.GetVkey',
+      method: 'UrlGetVkey',
       param: {
+        uin: uin !== '0' ? uin : '',
         filename: filenames,
         guid,
         songmid: filenames.map(() => songmid),
         songtype: filenames.map(() => 0),
-        uin,
-        loginflag: 1,
-        platform: '20',
-        ...(authst ? { authst } : {})
+        ctx: 0
       }
     },
     loginUin: uin,
@@ -342,9 +503,53 @@ const createQqOfficialVkeyPayload = ({
       uin,
       format: 'json',
       ct: 24,
-      cv: 0
+      cv: 0,
+      ...loginComm
     }
   }
+}
+
+// CDN 调度取最新可用流媒体节点；失败时由调用方回退响应 sip 与兜底域名
+const fetchQqCdnSip = async (): Promise<string> => {
+  const now = getServerTimestamp()
+  if (qqCdnCache && qqCdnCache.expireAt > now) return qqCdnCache.sips[0] || ''
+
+  try {
+    const payload = {
+      req_0: {
+        module: 'music.audioCdnDispatch.cdnDispatch',
+        method: 'GetCdnDispatch',
+        param: {
+          guid: randomUUID().replace(/-/g, ''),
+          uid: '0',
+          use_new_domain: 1,
+          use_ipv6: 1
+        }
+      },
+      comm: { uin: 0, format: 'json', ct: 24, cv: 0 }
+    }
+    const response = await $fetch<any>(
+      `${QQ_MUSICS_URL}?sign=${await zzcSign(JSON.stringify(payload))}`,
+      {
+        method: 'POST',
+        headers: { ...txHeaders },
+        body: payload,
+        responseType: 'json',
+        signal: AbortSignal.timeout(6000)
+      }
+    )
+    const sips = Array.isArray(response?.req_0?.data?.sip)
+      ? response.req_0.data.sip.filter(
+          (sip: unknown) => typeof sip === 'string' && sip.startsWith('https://')
+        )
+      : []
+    qqCdnCache = { sips, expireAt: now + QQ_CDN_CACHE_TTL }
+  } catch (err) {
+    console.warn('[qq_music_sdk] CDN 调度失败，回退响应节点与兜底域名:', err)
+    qqCdnCache = { sips: [], expireAt: now + QQ_CDN_FAIL_TTL }
+  }
+
+  return qqCdnCache.sips[0] || ''
 }
 
 export const resolveQqOfficialPlayUrl = async ({
@@ -361,15 +566,14 @@ export const resolveQqOfficialPlayUrl = async ({
   const normalizedCookie = normalizeQqCookie(cookie)
   const cookieObject = parseCookieObject(normalizedCookie)
   const qualityKey = QQ_OFFICIAL_QUALITY_MAP[String(quality ?? '8').toLowerCase()] || '320'
-  const playableFileId = String(mediaId || songmid || '').trim()
   const songmidValue = String(songmid || '').trim()
 
   if (!songmidValue) {
     throw new Error('QQ 官方接口缺少 songmid')
   }
-  if (!playableFileId) {
-    throw new Error('QQ 官方接口缺少播放文件 ID')
-  }
+
+  // 无 media_mid 时上游规则是 mid 拼两次
+  const fileBase = String(mediaId || '').trim() || `${songmidValue}${songmidValue}`
 
   // 自请求档位起向低档生成候选，批量请求、顺位命中，权限不足时链内降级
   const qualityOrderIndex = QQ_OFFICIAL_QUALITY_ORDER.indexOf(qualityKey)
@@ -377,25 +581,28 @@ export const resolveQqOfficialPlayUrl = async ({
     qualityOrderIndex >= 0 ? QQ_OFFICIAL_QUALITY_ORDER.slice(qualityOrderIndex) : ['320', '128', 'm4a']
   const filenames = qualityCandidates.map((key) => {
     const fileType = QQ_PLAY_FILE_TYPE_MAP[key]
-    return `${fileType.prefix}${playableFileId}${fileType.suffix}`
+    return `${fileType.prefix}${fileBase}${fileType.suffix}`
   })
 
-  const guid = QQ_PLAY_GUID
+  const guid = randomUUID().replace(/-/g, '')
   const uin = resolveQqVkeyUin(cookieObject)
+  const authst = cookieObject.qqmusic_key || cookieObject.qm_keyst || cookieObject.music_key || ''
   const payload = createQqOfficialVkeyPayload({
     songmid: songmidValue,
     filenames,
     guid,
     uin,
-    authst: cookieObject.qqmusic_key
+    authst,
+    tmeLoginType: authst ? resolveQqLoginType(cookieObject, authst) : undefined
   })
+  const cdnSip = await fetchQqCdnSip()
 
   let url: string | undefined
   let info: Record<string, any> | undefined
 
   try {
     const normalResponse = await requestQqOfficialVkey(payload, normalizedCookie, false)
-    const parsed = parseQqOfficialPlayUrl(normalResponse, filenames, guid)
+    const parsed = parseQqOfficialPlayUrl(normalResponse, filenames, guid, cdnSip)
     url = parsed.url
     info = parsed.info
   } catch (normalErr) {
@@ -405,7 +612,7 @@ export const resolveQqOfficialPlayUrl = async ({
   if (!url) {
     try {
       const signedResponse = await requestQqOfficialVkey(payload, normalizedCookie, true)
-      const signedResult = parseQqOfficialPlayUrl(signedResponse, filenames, guid)
+      const signedResult = parseQqOfficialPlayUrl(signedResponse, filenames, guid, cdnSip)
       url = signedResult.url || url
       info = signedResult.info || info
     } catch (signedErr) {
@@ -426,10 +633,12 @@ export const resolveQqOfficialPlayUrl = async ({
   return upgradeTxAudioUrl(url)
 }
 
-// CgiGetVkey 常见拒绝码语义
+// CgiGetVkey/UrlGetVkey 常见拒绝码语义
 const QQ_VKEY_RESULT_HINTS: Record<string, string> = {
   '104003': '该歌曲或音质需要绿钻/付费权限，或受版权、风控限制',
   '104002': '账号权益不足或登录态被限制',
+  '104004': 'VKey 生成失败或歌曲文件不存在',
+  '104013': '播放设备受限或触发风控',
   '-1': '请求参数或登录态不被接受',
   '-2': '歌曲不存在或已下架'
 }
@@ -636,42 +845,45 @@ export const isQqVipFromLoginBaseData = (data: unknown): boolean => {
   )
 }
 
-/**
- * 校验 QQ 音乐登录 Cookie 并提取用户档案。
- * vip_login_base 是账户级接口，失效 Cookie 会返回错误码，作为有效性的主判据；
- * 主页资料接口用于补充昵称/头像。
- * 探针不走库内封装：微信区 Cookie（tmeLoginType=1，无 p_skey）在库的
- * 默认 comm 下会被上游拒绝，必须补齐 tmeLoginType 与计算出的 g_tk。
- */
-export const checkQqCookie = async ({ cookie }: { cookie?: string }) => {
-  const normalizedCookie = normalizeQqCookie(cookie)
-  const diagnostic = getQqCookieDiagnostic(normalizedCookie)
-  const cookieObject = parseCookieObject(normalizedCookie)
-  const rawUin = String(cookieObject.uin || '').replace(/^o/i, '')
-
-  let vipOk = false
-  let vipCode: unknown
-  let isVip = false
-  let detailOk = false
-
+/** vip_login_base 探针：账户级接口，失效 Cookie 会返回错误码，作为登录有效性主判据 */
+const probeQqVipLogin = async (cookieObject: Record<string, string>, cookie: string) => {
   try {
     const numericLoginType = Number(cookieObject.tmeLoginType)
     const resp: any = await callQqMusicu({
       module: 'VipLogin.VipLoginInter',
       method: 'vip_login_base',
       param: {},
-      cookie: normalizedCookie,
+      cookie,
       extraComm: Number.isFinite(numericLoginType) ? { tmeLoginType: numericLoginType } : undefined
     })
     const reqData = resp?.req_1 || {}
-    vipCode = reqData.code
-    vipOk = Number(reqData.code) === 0
-    if (vipOk) {
-      isVip = isQqVipFromLoginBaseData(reqData.data)
+    const vipOk = Number(reqData.code) === 0
+    return {
+      vipOk,
+      vipCode: reqData.code as unknown,
+      isVip: vipOk ? isQqVipFromLoginBaseData(reqData.data) : false
     }
   } catch (error) {
     console.warn('[qq_music_sdk] vip_login_base 失败:', error instanceof Error ? error.message : error)
+    return { vipOk: false, vipCode: undefined as unknown, isVip: false }
   }
+}
+
+/**
+ * 校验 QQ 音乐登录 Cookie 并提取用户档案。
+ * vip_login_base 是账户级接口，失效 Cookie 会返回错误码，作为有效性的主判据；
+ * 主页资料接口用于补充昵称/头像。
+ * 探针不走库内封装：微信区 Cookie（tmeLoginType=1，无 p_skey）在库的
+ * 默认 comm 下会被上游拒绝，必须补齐 tmeLoginType 与计算出的 g_tk。
+ * 双探针均失败时尝试凭据续期，续期成功则返回新 Cookie 供调用方落盘。
+ */
+export const checkQqCookie = async ({ cookie }: { cookie?: string }) => {
+  const normalizedCookie = normalizeQqCookie(cookie)
+  const cookieObject = parseCookieObject(normalizedCookie)
+  const rawUin = String(cookieObject.uin || '').replace(/^o/i, '')
+
+  let { vipOk, vipCode, isVip } = await probeQqVipLogin(cookieObject, normalizedCookie)
+  let detailOk = false
 
   let profile: { nickname?: string; avatarUrl?: string; userId?: string } | undefined
 
@@ -733,16 +945,35 @@ export const checkQqCookie = async ({ cookie }: { cookie?: string }) => {
     }
   }
 
+  // 双探针全失败才判定失效：先尝试用 refresh_token 续期，成功则复验并回传新 Cookie
+  let activeCookie = normalizedCookie
+  let refreshed = false
+  if (!vipOk && !detailOk) {
+    const refreshResult = await refreshQqCredential({ cookie: normalizedCookie })
+    if (refreshResult.refreshed) {
+      activeCookie = refreshResult.cookie
+      const retried = await probeQqVipLogin(parseCookieObject(activeCookie), activeCookie)
+      vipOk = retried.vipOk
+      vipCode = retried.vipCode
+      isVip = retried.isVip
+      refreshed = true
+    }
+  }
+
+  const valid = vipOk || detailOk
   return {
-    valid: vipOk || detailOk,
+    valid,
     isVip,
     signals: {
       vipOk,
       vipCode: vipCode === undefined ? null : vipCode,
-      detailOk
+      detailOk,
+      refreshed
     },
     profile,
-    authDiagnostic: diagnostic
+    // 复验通过才回传新 Cookie，否则前端会按失效流程清理登录态
+    cookie: refreshed && valid ? activeCookie : undefined,
+    authDiagnostic: getQqCookieDiagnostic(activeCookie)
   }
 }
 
@@ -774,8 +1005,6 @@ export const searchQqMusic = async ({
 }
 
 // ─── QRC 解密 ─────────────────────────────────────────────────────────────────
-// 移植自 SPlayer-Next electron/main/apis/qqmusic/core/tripledes.ts + qrc.ts
-// 原始来源: LDDC 项目 https://github.com/chenmozhijin/LDDC
 
 const QRC_KEY = Buffer.from('!@#)(*$%123ZXC!@!@#)(NHL', 'utf8')
 
@@ -886,8 +1115,7 @@ const tryDecryptQrc = (hex: string | undefined): string | undefined => {
 // ─── QQ 音乐原生歌词接口（支持 QRC 逐字）────────────────────────────────────
 
 /**
- * 调用 music.musichallSong.PlayLyricInfo/GetPlayLyricInfo 获取 QRC 歌词。
- * 参考 SPlayer-Next electron/main/apis/qqmusic/modules/lyric.ts
+ * 调用 music.musichallSong.PlayLyricInfo/GetPlayLyricInfo 获取 QRC 歌词
  */
 export const resolveQqNativeLyric = async ({
   songId,
@@ -1218,7 +1446,11 @@ const callQqMusicu = async ({
     req_1: { module, method, param }
   }
 
-  const headers: Record<string, string> = { ...txHeaders }
+  const headers: Record<string, string> = {
+    ...txHeaders,
+    'Content-Type': 'application/json',
+    Referer: 'https://y.qq.com/'
+  }
   if (normalizedCookie) headers['Cookie'] = normalizedCookie
 
   try {

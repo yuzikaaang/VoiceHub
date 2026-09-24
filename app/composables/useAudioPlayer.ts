@@ -1,6 +1,7 @@
 import { computed, readonly, ref } from 'vue'
 import { isBilibiliSong } from '~/utils/bilibiliSource'
 import { useMusicSources } from '~/composables/useMusicSources'
+import { useLyricSettings } from '~/composables/useLyricSettings'
 import type { MusicTrackMeta } from '~/utils/musicUrl'
 
 export interface PlayableSong {
@@ -136,7 +137,8 @@ export function useAudioPlayer() {
           options.musicInfo = {
             name: nextSong.title,
             artist: nextSong.artist,
-            album: nextSong.album || undefined
+            album: nextSong.album || undefined,
+            rawItem: nextSong
           }
 
           const url = await getMusicUrl(
@@ -226,7 +228,8 @@ export function useAudioPlayer() {
           options.musicInfo = {
             name: prevSong.title,
             artist: prevSong.artist,
-            album: prevSong.album || undefined
+            album: prevSong.album || undefined,
+            rawItem: prevSong
           }
 
           const url = await getMusicUrl(
@@ -325,7 +328,8 @@ export function useAudioPlayer() {
           title: song.title,
           artist: song.artist,
           album: song.album || undefined,
-          duration: song.duration || undefined
+          duration: song.duration || undefined,
+          priority: useLyricSettings().lyricPriority.value
         }).catch(() => {})
       } catch (error) {
         console.warn('[AudioPlayer] 歌词预载失败:', error)
@@ -365,7 +369,8 @@ export function useAudioPlayer() {
       options.musicInfo = {
         name: nextSong.title,
         artist: nextSong.artist,
-        album: nextSong.album || undefined
+        album: nextSong.album || undefined,
+        rawItem: nextSong
       }
 
       const url = await getMusicUrl(

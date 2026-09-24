@@ -1,5 +1,7 @@
 import { computed, readonly, ref, watch } from 'vue'
 import { useLocale } from '~/utils/locale'
+import { getLoginStatus } from '~/utils/neteaseApi'
+import { LEGACY_PLUGIN_PLATFORM_PREFIX, PLUGIN_PLATFORM_PREFIX } from '~/utils/pluginPlatform'
 
 // 音质配置
 export const QUALITY_OPTIONS = {
@@ -23,6 +25,11 @@ export const QUALITY_OPTIONS = {
     { value: 2, key: 'miguHq' },
     { value: 3, key: 'miguSq' },
     { value: 4, key: 'miguZq24' },
+  ],
+  plugin: [
+    { value: 2, key: 'pluginStandard' },
+    { value: 4, key: 'pluginHigh' },
+    { value: 5, key: 'pluginSuper' }
   ]
 }
 
@@ -31,7 +38,15 @@ const DEFAULT_QUALITY = {
   netease: 4, // HQ极高 (320k)
   tencent: 8, // HQ高音质
   bilibili: 1,
-  migu: 1 // 标准音质（咪咕匿名仅提供 128k）
+  migu: 1, // 标准音质（咪咕匿名仅提供 128k）
+  plugin: 4 // 高品质
+}
+
+// 将平台名归一化为音质配置键（plugin:<id> → plugin，netease-podcast → netease）
+const normalizeQualityPlatform = (platform: string): string => {
+  if (platform.startsWith(PLUGIN_PLATFORM_PREFIX) || platform.startsWith(LEGACY_PLUGIN_PLATFORM_PREFIX)) return 'plugin'
+  if (platform === 'netease-podcast') return 'netease'
+  return platform
 }
 
 // 全局音质状态，确保所有组件共享同一个状态
@@ -39,6 +54,63 @@ let globalAudioQuality: any = null
 // 网易云登录状态，全局共享
 const isNeteaseLoggedIn = ref(false)
 let isLoginStatusInitialized = false
+
+// 网易 VIP 标志（localStorage netease_vip）：vipType 非 0 即 VIP，仅 VIP 登录态才优先官方播放源
+const persistNeteaseVipFlag = (profile: any) => {
+  if (typeof window === 'undefined') return
+  try {
+    if (profile && typeof profile.vipType === 'number') {
+      localStorage.setItem('netease_vip', profile.vipType !== 0 ? '1' : '0')
+    } else {
+      localStorage.removeItem('netease_vip')
+    }
+  } catch (error) {
+    console.error('[audioQuality] Failed to persist netease_vip:', error)
+  }
+}
+
+const clearNeteaseVipFlag = () => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem('netease_vip')
+  } catch {
+    // localStorage 不可用时忽略
+  }
+}
+
+// 每会话一次的 VIP 状态静默刷新守卫
+let isNeteaseVipRefreshing = false
+let isNeteaseVipRefreshed = false
+
+// 静默刷新 VIP 状态：有 cookie 时调 /login/status 校验登录态并同步 VIP 标志
+const refreshNeteaseVipStatus = async () => {
+  if (typeof window === 'undefined' || isNeteaseVipRefreshed || isNeteaseVipRefreshing) return
+  let cookie: string | null = null
+  try {
+    cookie = localStorage.getItem('netease_cookie')
+  } catch {
+    // localStorage 不可用时跳过刷新
+  }
+  if (!cookie) return
+  isNeteaseVipRefreshing = true
+  try {
+    const res = await getLoginStatus(cookie)
+    const dataObj = res.body?.data || res.body
+    if (dataObj && dataObj.account) {
+      isNeteaseLoggedIn.value = true
+      persistNeteaseVipFlag(dataObj.profile)
+    } else {
+      // 登录失效：仅清 VIP 标志，cookie 与组件本地状态由组件级校验负责清理
+      clearNeteaseVipFlag()
+      isNeteaseLoggedIn.value = false
+    }
+  } catch {
+    // 网络异常保留本地状态
+  } finally {
+    isNeteaseVipRefreshing = false
+    isNeteaseVipRefreshed = true
+  }
+}
 
 export function useAudioQuality() {
   const { ui } = useLocale()
@@ -55,7 +127,11 @@ export function useAudioQuality() {
   const getStoredQuality = () => {
     try {
       const stored = localStorage.getItem('audioQuality')
-      return stored ? JSON.parse(stored) : DEFAULT_QUALITY
+      if (!stored) return DEFAULT_QUALITY
+      const parsed = JSON.parse(stored)
+      // 旧版本以 musicfree 作为插件音质配置键，迁移到 plugin
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !('plugin' in parsed) && 'musicfree' in parsed) parsed.plugin = parsed.musicfree
+      return parsed || DEFAULT_QUALITY
     } catch {
       return DEFAULT_QUALITY
     }
@@ -82,9 +158,13 @@ export function useAudioQuality() {
   // 初始化登录状态监听
   if (!isLoginStatusInitialized && typeof window !== 'undefined') {
     checkNeteaseLoginStatus()
+    refreshNeteaseVipStatus()
     window.addEventListener('storage', (e) => {
       if (e.key === 'netease_cookie') {
         checkNeteaseLoginStatus()
+        // 其他标签页登录态变化时重新同步 VIP 标志
+        isNeteaseVipRefreshed = false
+        refreshNeteaseVipStatus()
       }
     })
     isLoginStatusInitialized = true
@@ -94,36 +174,30 @@ export function useAudioQuality() {
 
   // 保存音质设置到localStorage
   const saveQuality = (platform: string, quality: number) => {
-    audioQuality.value[platform] = quality
+    audioQuality.value[normalizeQualityPlatform(platform)] = quality
     // localStorage保存已经通过watch自动处理
   }
 
   // 获取指定平台的音质设置
   const getQuality = (platform: string) => {
-    // 处理 netease-podcast 别名
-    if (platform === 'netease-podcast') {
-      platform = 'netease'
-    }
+    const key = normalizeQualityPlatform(platform)
 
-    const stored = audioQuality.value[platform]
+    const stored = audioQuality.value[key]
     // 已保存的音质值不再存在于选项列表时（如咪咕音质收敛后残留旧值），回落默认值
     const platformOptions =
-      (QUALITY_OPTIONS as Record<string, Array<{ value: number; key: string }>>)[platform] || []
+      (QUALITY_OPTIONS as Record<string, Array<{ value: number; key: string }>>)[key] || []
     const isValid = platformOptions.some((option) => option.value === stored)
     if (isValid) {
       return stored
     }
-    return (DEFAULT_QUALITY as Record<string, number>)[platform]
+    return (DEFAULT_QUALITY as Record<string, number>)[key]
   }
 
   // 获取指定平台的音质选项
   const getQualityOptions = (platform: string) => {
-    // 处理 netease-podcast 别名
-    if (platform === 'netease-podcast') {
-      platform = 'netease'
-    }
+    const key = normalizeQualityPlatform(platform)
 
-    return (QUALITY_OPTIONS[platform] || []).map((option) => ({
+    return (QUALITY_OPTIONS[key] || []).map((option) => ({
       ...option,
       label: locale.value?.options?.[option.key]?.label || option.key,
       description: locale.value?.options?.[option.key]?.description || '使用推荐音质设置'
@@ -132,10 +206,6 @@ export function useAudioQuality() {
 
   // 获取音质标签
   const getQualityLabel = (platform: string, quality: number) => {
-    // 处理 netease-podcast 别名
-    if (platform === 'netease-podcast') {
-      platform = 'netease'
-    }
     const options = getQualityOptions(platform)
     const option = options.find((opt) => opt.value === quality)
     return option ? option.label : locale.value.unknown
@@ -143,10 +213,6 @@ export function useAudioQuality() {
 
   // 获取音质描述
   const getQualityDescription = (platform: string, quality: number) => {
-    // 处理 netease-podcast 别名
-    if (platform === 'netease-podcast') {
-      platform = 'netease'
-    }
     const options = getQualityOptions(platform)
     const option = options.find((opt) => opt.value === quality)
     return option ? option.description : ''
@@ -173,6 +239,8 @@ export function useAudioQuality() {
     QUALITY_OPTIONS,
     DEFAULT_QUALITY,
     checkNeteaseLoginStatus,
-    isNeteaseLoggedIn: readonly(isNeteaseLoggedIn)
+    isNeteaseLoggedIn: readonly(isNeteaseLoggedIn),
+    persistNeteaseVipFlag,
+    clearNeteaseVipFlag
   }
 }

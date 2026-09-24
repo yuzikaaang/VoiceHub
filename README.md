@@ -445,7 +445,7 @@ nix run .#default --impure
 
 ##### 更新 pnpm 依赖哈希
 
-当 `pnpm-lock.yaml` 更新后，需要同步 `flake.nix` 中的 `pnpmDeps` 哈希。仓库已配置 GitHub Actions，会在 `pnpm-lock.yaml` 或 `flake.nix` 变更时自动计算新哈希并提交回触发分支。
+当 `pnpm-lock.yaml` 更新后，需要同步 `flake.nix` 中的 `pnpmDeps` 哈希。Nix CI 在构建因哈希过期失败时，会自动计算新哈希、验证构建并提交回触发分支；fork PR 与 bot 自身触发的运行只报错不写回，需要人工更新。
 
 如果需要在本地手动更新，可以先将 `flake.nix` 中 `pnpmDeps.hash` 临时改为空字符串，然后运行：
 
@@ -719,8 +719,7 @@ VoiceHub/
 │       ├── build-fpk.yml      # FnOS FPK 安装包构建
 │       ├── docker-build.yml   # Docker 镜像构建
 │       ├── docker-postgres.yml # PostgreSQL Docker 镜像构建
-│       ├── nix.yml            # Nix 构建校验
-│       └── update-nix-pnpm-hash.yml # 自动同步 pnpmDeps 哈希
+│       └── nix.yml            # Nix 构建校验与 pnpmDeps 哈希同步
 ├── app/                       # Nuxt 4 应用主目录
 │   ├── app.vue                # 应用入口文件
 │   ├── assets/                # 静态资源目录
@@ -752,8 +751,10 @@ VoiceHub/
 │   │   │   ├── CardCodesManager.vue   # 点歌券管理
 │   │   │   ├── DataAnalysisPanel.vue  # 数据分析面板
 │   │   │   ├── DatabaseManager.vue    # 数据库管理
+│   │   │   ├── DuplicateSongsModal.vue # 重复歌曲检测弹窗
 │   │   │   ├── EmailTemplateManager.vue # 邮件模板管理
 │   │   │   ├── MusicSourceController.vue # 音源控制管理
+│   │   │   ├── MusicSourcePlugins.vue # LX Music 与 MusicFree 插件音源管理
 │   │   │   ├── NotificationHistory.vue # 通知发送历史与用户已读明细
 │   │   │   ├── NotificationSender.vue # 通知发送管理
 │   │   │   ├── OAuthConfigManager.vue # OAuth 配置管理
@@ -765,6 +766,7 @@ VoiceHub/
 │   │   │   ├── ScheduleForm.vue       # 排期表单
 │   │   │   ├── ScheduleItemPrint.vue  # 排期项目打印
 │   │   │   ├── ScheduleManager.vue    # 排期管理
+│   │   │   ├── SchedulePlaylistExportModal.vue # 排期歌单导出弹窗（CSV）
 │   │   │   ├── SchedulePlaylistFilterModal.vue # 排期歌单过滤器
 │   │   │   ├── SchedulePrinter.vue    # 排期打印功能
 │   │   │   ├── ScheduleTablePrint.vue # 排期表格打印功能
@@ -855,7 +857,7 @@ VoiceHub/
 │   │   │   ├── PageTransition.vue     # 页面过渡动画
 │   │   │   ├── ProgressBar.vue        # 进度条组件
 │   │   │   ├── AppLoadingScreen.vue   # 启动加载屏幕组件
-│   │   │   ├── SongComments.vue       # 网易云音乐评论组件
+│   │   │   ├── SongComments.vue       # 网易云与QQ音乐评论组件
 │   │   │   └── WarpCanvas.vue         # 动态画布背景组件
 │   │   ├── year-review/       # 年度回顾组件
 │   │   │   ├── IntroSlide.vue     # 开场页
@@ -877,6 +879,7 @@ VoiceHub/
 │   │   ├── useAuth.ts          # 认证功能hooks
 │   │   ├── useBackgroundRenderer.ts # 背景渲染hooks
 │   │   ├── useBilibiliPreview.ts # Bilibili视频预览hooks
+│   │   ├── useChkszSource.ts   # ChKSz音源hooks
 │   │   ├── useErrorHandler.ts  # 错误处理hooks
 │   │   ├── useImportantNotification.ts # 重要通知全局状态与已读处理
 │   │   ├── useLocaleText.ts   # i18n 文案访问与服务端错误码本地化hooks
@@ -892,6 +895,7 @@ VoiceHub/
 │   │   ├── usePlatformConfig.ts    # 平台管理配置hooks
 │   │   ├── usePermissions.ts   # 权限管理hooks
 │   │   ├── usePasswordStrength.ts # 密码强度检测hooks
+│   │   ├── usePlayerLayout.ts  # 播放器布局（固定底部/自由拖拽）偏好hooks
 │   │   ├── useProgress.ts      # 进度管理hooks
 │   │   ├── useProgressEvents.ts # 进度事件hooks
 │   │   ├── useRequestDedup.ts  # 请求去重hooks
@@ -905,7 +909,8 @@ VoiceHub/
 │   │   ├── useTheme.ts         # 主题管理（深色/浅色/现代浅色切换）
 │   │   ├── useThemeImage.ts    # 主题图片获取
 │   │   ├── useToast.ts         # Toast提示hooks
-│   │   └── useUserFilters.ts  # 用户过滤器hooks
+│   │   ├── useUserFilters.ts  # 用户过滤器hooks
+│   │   └── useZIndex.ts        # 浮层动态层级hooks
 │   ├── drizzle/               # 数据库相关
 │   │   ├── db.ts               # 数据库连接
 │   │   ├── schema.ts           # 数据库模型
@@ -969,22 +974,29 @@ VoiceHub/
 │       │   ├── lyricLanguage.ts # 歌词语言识别（CJK 混合上下文）
 │       │   ├── lyricMatchQuality.ts # 歌词版本一致性检测
 │       │   ├── lyricParser.ts # 歌词解析器
+│       │   ├── lyricText.ts   # 歌词行文本/音译提取
 │       │   ├── lyricStripper.ts # 歌词清理
 │       │   ├── parseLrc.ts    # LRC格式解析
 │       │   └── qrc-parser.ts  # QRC格式解析
 │       ├── bilibiliSource.ts  # 哔哩哔哩音源
+│       ├── cover-theme.ts    # 封面取色与歌词主题色（AMLL 调色板）
 │       ├── debounce.ts       # 防抖工具
 │       ├── grade-class-input.ts # 年级班级批量输入解析
 │       ├── gradeClassWeights.js # 年级排序权重
+│       ├── invalidPlaybackUrls.ts # 播放端确认无效的地址登记（换源时跳过坏链）
 │       ├── lyricAdapter.ts    # 歌词适配器
 │       ├── markdown.js        # Markdown工具
 │       ├── musicSources.ts    # 音乐源配置
 │       ├── musicUrl.ts        # 音乐URL处理
+│       ├── pluginResolver.ts   # 插件音源搜索、歌词与媒体解析接入
+│       ├── pluginPlatform.ts # 插件音源平台键、插件 ID 与音质映射（LX Music / MusicFree）
 │       ├── platforms.ts       # 平台元数据共享（白名单/显示名/图标）
+│       ├── playerLayout.ts    # 播放器布局模式与自由拖拽坐标解析
 │       ├── blacklist.ts       # 歌曲类型黑名单候选值共享（语种/曲风）
 │       ├── sentryUpstreamMusicErrors.ts # Sentry 上游音源错误过滤
 │       ├── song-name-normalize.ts # 歌曲名称归一化匹配
 │       ├── neteaseApi.ts      # 网易云音乐API
+│       ├── qqCookie.ts        # QQ音乐登录Cookie存取与续期广播
 │       ├── qqUserLibrary.ts   # QQ音乐用户资料库（歌单/最近播放）
 │       ├── oauth-register.ts  # OAuth注册工具
 │       ├── email-verification.ts # 注册邮箱验证码
@@ -993,7 +1005,9 @@ VoiceHub/
 │       ├── oauth.ts           # OAuth工具
 │       ├── autoSchedule.ts    # 自动排期算法
 │       ├── timeUtils.ts       # 时间工具
+│       ├── user-archive.ts    # 账号归档判定与筛选参数解析
 │       ├── webauthn.js        # WebAuthn浏览器兼容工具
+│       ├── print-image-cache.ts # 打印导出图片下载缓存
 │       └── url.ts             # URL处理工具
 ├── server/                # 服务端代码
 │   ├── api/                # API路由
@@ -1051,6 +1065,16 @@ VoiceHub/
 │   │   │   │   ├── pool-status.get.ts # 连接池状态
 │   │   │   │   ├── reset.post.ts    # 重置数据库
 │   │   │   │   └── status.get.ts    # 数据库状态
+│   │   │   ├── music-source-plugins/ # 音源插件配置、启停、排序与验证
+│   │   │   │   ├── [id].delete.ts   # 移除音源插件
+│   │   │   │   ├── [id].put.ts      # 更新音源插件
+│   │   │   │   ├── [id]/            # 单个插件操作
+│   │   │   │   │   ├── enabled.patch.ts # 启用/停用
+│   │   │   │   │   ├── refresh.post.ts  # 重新加载插件产物
+│   │   │   │   │   └── test.post.ts     # 验证插件初始化
+│   │   │   │   ├── index.get.ts     # 插件列表与配置版本
+│   │   │   │   ├── index.post.ts    # 新增音源插件
+│   │   │   │   └── order.put.ts     # 保存解析优先级排序
 │   │   │   ├── db-status.get.ts     # 数据库状态检查
 │   │   │   ├── email-templates/     # 邮件模板管理API
 │   │   │   │   ├── index.delete.ts  # 删除邮件模板
@@ -1077,6 +1101,7 @@ VoiceHub/
 │   │   │   │   ├── index.post.ts    # 创建点歌时间
 │   │   │   │   └── index.ts         # 点歌时间列表
 │   │   │   ├── schedule/            # 排期管理API
+│   │   │   │   ├── bulk-draft.post.ts # 批量保存排期草稿
 │   │   │   │   ├── bulk-publish.post.ts # 批量发布排期
 │   │   │   │   ├── copy.post.ts     # 复制排期到指定日期
 │   │   │   │   ├── draft.post.ts    # 保存排期草稿
@@ -1101,6 +1126,8 @@ VoiceHub/
 │   │   │   │   ├── test-connection.post.ts # 测试SMTP连接
 │   │   │   │   └── test-email.post.ts # 发送测试邮件
 │   │   │   ├── songs/               # 管理员歌曲管理API
+│   │   │   │   ├── batch-reject.post.ts  # 批量驳回歌曲
+│   │   │   │   ├── cover.post.ts    # 获取歌曲封面
 │   │   │   │   ├── delete.post.ts   # 删除歌曲
 │   │   │   │   ├── duration.post.ts # 更新歌曲时长
 │   │   │   │   ├── mark-played.post.ts  # 标记歌曲已播放
@@ -1144,6 +1171,7 @@ VoiceHub/
 │   │   │       └── [...path].ts   # 转发网易云API请求
 │   │   ├── auth/           # 认证API
 │   │   │   ├── captcha.get.ts         # 图形验证码
+│   │   │   ├── captcha-required.get.ts # 登录验证码预检
 │   │   │   ├── oauth-register-options.get.ts # OAuth注册选项
 │   │   │   ├── grade-class-options.get.ts # 年级班级选项
 │   │   │   ├── email-code.post.ts # 注册邮箱验证码发送
@@ -1187,7 +1215,15 @@ VoiceHub/
 │   │   │   ├── resolve-url.post.ts # 音乐播放链接统一解析
 │   │   │   ├── state.post.ts        # 音乐状态管理
 │   │   │   └── websocket.ts         # 音乐WebSocket连接
+│   │   ├── music-source-plugins/ # 统一音源插件接口
+│   │   │   ├── capabilities.get.ts  # 插件能力与平台列表
+│   │   │   ├── lyric.post.ts        # 插件歌词获取
+│   │   │   ├── media.get.ts         # 插件媒体代理
+│   │   │   ├── resolve.post.ts      # 插件播放链接解析与回退
+│   │   │   └── search.post.ts       # 插件搜索
 │   │   ├── native-api/     # 原生音乐API
+│   │   │   ├── comment/              # 评论API
+│   │   │   │   └── tx.get.ts         # QQ音乐评论
 │   │   │   ├── lyric/               # 歌词API
 │   │   │   │   ├── mg.get.ts        # 咪咕音乐歌词
 │   │   │   │   └── tx.get.ts        # 腾讯音乐歌词
@@ -1353,6 +1389,20 @@ VoiceHub/
 │   │   ├── ip-utils.ts     # IP地址工具
 │   │   ├── jwt-enhanced.ts # JWT工具
 │   │   ├── log-manager.ts  # 日志管理工具
+│   │   ├── music-source-plugins/ # LX Music 与 MusicFree 音源插件运行时、沙箱与凭证管理
+│   │   │   ├── access.ts    # 后台权限、同源校验与调用限流
+│   │   │   ├── backup.ts    # 插件表备份清单与恢复写入
+│   │   │   ├── errors.ts    # 插件错误码构造
+│   │   │   ├── guest.js     # 注入沙箱的宿主环境与 __inspect/__invoke
+│   │   │   ├── manifest.ts  # 部署快照模块转发（实际快照为构建产物）
+│   │   │   ├── network.ts   # 出站请求校验、重定向与体积限制
+│   │   │   ├── platform.ts  # plugin:/musicfree: 平台键解析
+│   │   │   ├── prepare.ts   # 沙箱预置环境打包与脚本下载
+│   │   │   ├── resolver.ts  # 能力列表、搜索、解析回退与歌词
+│   │   │   ├── runtime.ts   # QuickJS/WASM 沙箱与协议适配
+│   │   │   ├── store.ts     # 配置读写、名称解析、产物落盘与刷新
+│   │   │   ├── tickets.ts   # 加密凭证签发与校验
+│   │   │   └── types.ts     # 插件类型定义
 │   │   ├── native_common.ts # 原生API通用工具
 │   │   ├── native_tx.ts    # 腾讯音乐原生API
 │   │   ├── native_wy.ts    # 网易云音乐原生API
@@ -1362,6 +1412,7 @@ VoiceHub/
 │   │   ├── oauth-identity.ts # OAuth身份绑定与头像同步工具
 │   │   ├── oauth.ts        # OAuth通用工具
 │   │   ├── permissions.js  # 权限系统配置
+│   │   ├── qqComment.ts    # QQ音乐评论数据归一化
 │   │   ├── qq_music_sdk.ts # QQ音乐SDK调用封装
 │   │   ├── rateLimiter.ts  # 请求速率限制工具
 │   │   ├── register-validation.ts # 注册校验纯函数
@@ -1372,6 +1423,7 @@ VoiceHub/
 │   │   ├── song-duration-policy.ts # 歌曲时长归一化与补齐/清空决策
 │   │   ├── song-name-normalize.ts # 歌曲名称标准化匹配工具
 │   │   ├── song-type-resolver.ts # 歌曲类型（语种/曲风）解析工具
+│   │   ├── songCoverFetcher.ts # 外部平台歌曲封面获取工具
 │   │   ├── songDurationFetcher.ts # 外部平台歌曲时长获取工具
 │   │   ├── restoreScheduleSongPool.ts # 排期备选池恢复工具
 │   │   ├── s3Client.ts     # S3 兼容存储客户端（AWS Signature V4）
@@ -1386,14 +1438,17 @@ VoiceHub/
 │   │   ├── system-settings-defaults.ts # 系统设置默认值
 │   │   ├── system-settings-helper.ts # 系统设置读取与强制改密判断工具
 │   │   ├── theme-config.ts # 主题配置校验与解析工具
+│   │   ├── userDisplayName.ts # 同名用户消歧统一口径（仅在读用户参与统计）
 │   │   ├── telemetry.ts    # 遥测与错误追踪工具
 │   │   ├── user.ts         # 用户相关工具函数
+│   │   ├── user-archive.ts # 账号归档判定转发导出（权威实现在 app/utils）
 │   │   ├── user-avatar.ts  # OAuth 头像来源解析工具
 │   │   ├── webauthn-config.ts # WebAuthn配置工具
 │   │   └── webauthn-token.ts # WebAuthn令牌工具
 │   └── tsconfig.json       # 服务端TypeScript配置
 ├── scripts/               # 构建、部署与数据库维护脚本
-│   ├── build.js           # 输出环境变量解析结果并执行 Nuxt 构建
+│   ├── build.js           # 输出环境变量解析结果并执行插件构建与 Nuxt 构建
+│   ├── build-music-source-plugins.ts # 生成 Serverless 音源插件部署快照
 │   ├── check-deploy.js    # 部署前检查
 │   ├── clear-database.js  # 清空数据库
 │   ├── create-admin.js    # 创建管理员账户
@@ -1410,14 +1465,22 @@ VoiceHub/
 │   └── server/             # 服务端策略与安全测试
 │       ├── auth-route-policy.test.ts # 强制改密路由策略测试
 │       ├── cors-origin-policy.test.ts # CORS 来源协议匹配测试
+│       ├── cover-image-url.test.ts # 封面尺寸参数处理测试
 │       ├── important-notification-policy.test.ts # 重要通知策略测试
 │       ├── initial-password-policy.test.ts # 初始密码状态策略测试
+│       ├── invalid-playback-urls.test.ts # 无效播放地址登记与淘汰测试
+│       ├── lyric-lrc-parse.test.ts # LRC 混合精度毫秒时间戳解析测试
+│       ├── music-source-plugin-platform.test.ts # 插件平台键解析测试
+│       ├── music-source-runtime.test.ts # 插件沙箱与网络策略测试
 │       ├── notification-history-policy.test.ts # 通知批次引用、筛选与分页策略测试
 │       ├── oauth-state-cookie.test.ts # OAuth state Cookie 安全测试
 │       ├── password-policy.test.ts # 密码策略测试
+│       ├── player-layout.test.ts # 播放器自由拖拽限位与偏好解析测试
+│       ├── qq-comment-normalize.test.ts # QQ音乐评论归一化测试
 │       ├── song-duration-policy.test.ts # 歌曲时长归一化与补齐决策测试
 │       ├── submission-restriction-policy.test.ts # 重复投稿限制模式判定测试
 │       ├── token-version-policy.test.ts # 令牌版本策略测试
+│       ├── user-archive.test.ts # 账号归档筛选参数解析测试
 │       └── user-avatar.test.ts # OAuth 头像来源解析测试
 ├── types/                 # TypeScript类型定义
 │   ├── global.d.ts         # 全局类型定义
@@ -2007,7 +2070,17 @@ const confirmUnbind = (provider) => {
 
 ### 音源扩展开发指南
 
-VoiceHub 采用了模块化的音源架构，支持多音源故障转移和动态扩展。开发者可以轻松添加新的音乐API源，提高系统的可用性和音乐资源覆盖率。
+VoiceHub 采用了模块化的音源架构，支持多音源故障转移和动态扩展。开发者可以在后台录入多个 LX Music 或 MusicFree 插件 JavaScript 直链，提高系统的可用性和音乐资源覆盖率。URL、插件参数、启用状态和优先级只保存在数据库，不再读取音源环境变量或本地目录。
+
+#### 音源插件运行时说明
+
+- **平台键**：插件音源统一使用 `plugin:<插件ID>` 作为歌曲平台标识，LX Music 与 MusicFree 插件共用同一套键；旧数据里的 `musicfree:<插件ID>` 继续识别。
+- **兼容协议**：运行时兼容 LX Music 的 `lx.on` / `lx.send` / `lx.request` 协议，以及 MusicFree 的 CommonJS `search`、`getMediaSource`、`getLyric` 协议。协议可自动识别，也可以在后台明确指定。LX Music 音源作为内置平台的解析器参与回退，声明了搜索能力的插件才会出现在搜索平台列表。
+- **安全执行**：第三方脚本在 QuickJS/WASM 中运行，不会直接导入 Nitro 主进程。宿主仅提供受限 HTTP、加密、压缩、随机数和日志能力；网络请求会校验协议、重定向、DNS 和内网地址，并受限于超时、内存、响应体积与并发数。
+- **常驻部署**：Node/Docker 保存或刷新插件后立即下载、校验并原子切换到新版本。下载或验证失败时，已生效版本继续服务；启用开关和拖拽排序立即生效。
+- **Serverless 部署**：构建时 `pnpm run build:plugins` 从数据库读取配置并生成部署快照。下载或验证失败的插件不会写入快照，仅跳过该插件，不终止部署。新增或修改脚本在下一次部署后生效；已部署版本的启用开关和排序仍从数据库读取。
+- **回退与播放**：搜索、歌词和播放链接会按启用且排序后的插件依次尝试。媒体链接经受限代理提供 Range 支持，服务端保存加密的短期选择凭证，避免插件特有字段在后续播放时丢失。
+- **配置与备份**：插件参数加密保存，管理接口仅返回是否已配置；脚本 URL 会脱敏展示。系统数据备份包含插件配置、版本和歌曲的插件选择数据。
 
 #### 音源架构概述
 

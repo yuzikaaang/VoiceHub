@@ -50,6 +50,12 @@
                 }})
               </button>
               <button
+                class="flex items-center justify-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-quaternary text-warning text-[11px] font-black rounded-lg border border-border-tertiary-50 transition-all active:scale-95 uppercase tracking-widest"
+                @click="batchReject"
+              >
+                <X :size="14" /> {{ locale.actions.batchReject }} ({{ selectedSongs.length }})
+              </button>
+              <button
                 class="flex items-center justify-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-quaternary text-error text-[11px] font-black rounded-lg border border-border-tertiary-50 transition-all active:scale-95 uppercase tracking-widest"
                 @click="batchDelete"
               >
@@ -58,6 +64,14 @@
             </div>
           </Transition>
 
+          <button
+            class="flex items-center gap-2 px-5 py-2.5 bg-bg-secondary border border-border-secondary hover:border-border-tertiary text-text-secondary text-xs font-bold rounded-lg transition-all active:scale-95"
+            @click="showDuplicateModal = true"
+          >
+            <Copy :size="16" />
+            {{ locale.actions.duplicate }}
+            <span v-if="duplicateGroups.length" class="text-primary">({{ duplicateGroups.length }})</span>
+          </button>
           <button
             class="flex items-center gap-2 px-5 py-2.5 bg-bg-secondary border border-border-secondary hover:border-border-tertiary text-text-secondary text-xs font-bold rounded-lg transition-all active:scale-95"
             @click="openAddSongModal"
@@ -356,7 +370,7 @@
               class="col-span-12 lg:col-span-2 flex items-center justify-end gap-1 lg:gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all shrink-0 ml-auto"
             >
               <button
-                class="p-2 bg-bg-tertiary-50 text-primary hover:bg-primary-hover hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
+                class="flex items-center justify-center p-2 bg-bg-tertiary-50 text-primary hover:bg-primary-hover hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
                 :title="locale.actions.edit"
                 @click="editSong(song)"
               >
@@ -365,7 +379,7 @@
 
               <button
                 v-if="!song.played"
-                class="p-2 bg-bg-tertiary-50 text-success hover:bg-success hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
+                class="flex items-center justify-center p-2 bg-bg-tertiary-50 text-success hover:bg-success hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
                 :title="locale.actions.markPlayed"
                 @click="markAsPlayed(song.id)"
               >
@@ -373,7 +387,7 @@
               </button>
               <button
                 v-else
-                class="p-2 bg-bg-tertiary-50 text-text-tertiary hover:bg-bg-quaternary hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
+                class="flex items-center justify-center p-2 bg-bg-tertiary-50 text-text-tertiary hover:bg-bg-quaternary hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
                 :title="locale.actions.markUnplayed"
                 @click="markAsUnplayed(song.id)"
               >
@@ -381,14 +395,14 @@
               </button>
 
               <button
-                class="p-2 bg-bg-tertiary-50 text-warning hover:bg-warning hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
+                class="flex items-center justify-center p-2 bg-bg-tertiary-50 text-warning hover:bg-warning hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
                 :title="locale.actions.reject"
                 @click="rejectSong(song.id)"
               >
                 <X :size="14" />
               </button>
               <button
-                class="p-2 bg-bg-tertiary-50 text-error hover:bg-error hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
+                class="flex items-center justify-center p-2 bg-bg-tertiary-50 text-error hover:bg-error hover:text-text-primary rounded-xl transition-all border border-border-tertiary-30"
                 :title="locale.actions.deleteSong"
                 @click="deleteSong(song.id)"
               >
@@ -432,6 +446,13 @@
           >
             <Download :size="16" class="mb-1" />
             <span class="text-[9px] font-bold">{{ locale.actions.download }}</span>
+          </button>
+          <button
+            class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-warning rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+            @click="batchReject"
+          >
+            <X :size="16" class="mb-1" />
+            <span class="text-[9px] font-bold">{{ locale.actions.batchReject }}</span>
           </button>
           <button
             class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-error rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
@@ -489,7 +510,9 @@
           @click.stop
         >
           <div class="px-8 py-6 border-b border-border-secondary-50 flex items-center justify-between">
-            <h3 class="text-xl font-black text-text-primary">{{ locale.rejectDialog.title }}</h3>
+            <h3 class="text-xl font-black text-text-primary">
+              {{ isBatchReject ? locale.rejectDialog.batchTitle : locale.rejectDialog.title }}
+            </h3>
             <button
               class="text-text-tertiary hover:text-text-secondary transition-colors"
               @click="cancelReject"
@@ -505,7 +528,11 @@
               >
                 <Music :size="18" />
               </div>
-              <div>
+              <div v-if="isBatchReject">
+                <h4 class="font-bold text-text-primary text-sm">{{ locale.rejectDialog.batchInfo(batchRejectIds.length) }}</h4>
+                <p class="text-xs text-text-tertiary">{{ locale.rejectDialog.batchHint }}</p>
+              </div>
+              <div v-else>
                 <h4 class="font-bold text-text-primary text-sm">{{ rejectSongInfo.title }}</h4>
                 <p class="text-xs text-text-tertiary">{{ locale.rejectDialog.requester(rejectSongInfo.requester) }}</p>
               </div>
@@ -531,7 +558,7 @@
               <div>
                 <span
                   class="text-xs font-bold text-text-secondary group-hover:text-error transition-colors"
-                  >{{ locale.rejectDialog.addToBlacklist }}</span
+                  >{{ isBatchReject ? locale.rejectDialog.batchAddToBlacklist : locale.rejectDialog.addToBlacklist }}</span
                 >
                 <p class="text-[10px] text-text-disabled font-medium">
                   {{ locale.rejectDialog.blacklistHint }}
@@ -561,6 +588,15 @@
 
     <!-- 投票人员弹窗 -->
     <VotersModal :show="showVotersModal" :song-id="selectedSongId" @close="closeVotersModal" />
+
+    <!-- 重复歌曲检测弹窗 -->
+    <DuplicateSongsModal
+      :show="showDuplicateModal"
+      :groups="duplicateGroups"
+      @close="showDuplicateModal = false"
+      @edit-song="editFromDuplicate"
+      @delete-song="deleteSong"
+    />
 
     <!-- 下载歌曲对话框 -->
     <SongDownloadDialog
@@ -1005,20 +1041,37 @@
               <label class="text-[10px] font-black text-text-disabled uppercase tracking-widest px-1"
                 >{{ locale.editModal.coverUrl }}</label
               >
-              <input
-                v-if="showEditModal"
-                v-model="editForm.cover"
-                type="text"
-                placeholder="http://..."
-                class="w-full bg-bg-primary border border-border-secondary rounded-lg px-4 py-3 text-sm text-text-primary focus:outline-none transition-all"
-              />
-              <input
-                v-else
-                v-model="addForm.cover"
-                type="text"
-                placeholder="http://..."
-                class="w-full bg-bg-primary border border-border-secondary rounded-lg px-4 py-3 text-sm text-text-primary focus:outline-none transition-all"
-              />
+              <div class="flex gap-2">
+                <input
+                  v-if="showEditModal"
+                  v-model="editForm.cover"
+                  type="text"
+                  placeholder="http://..."
+                  class="w-full bg-bg-primary border border-border-secondary rounded-lg px-4 py-3 text-sm text-text-primary focus:outline-none transition-all"
+                />
+                <input
+                  v-else
+                  v-model="addForm.cover"
+                  type="text"
+                  placeholder="http://..."
+                  class="w-full bg-bg-primary border border-border-secondary rounded-lg px-4 py-3 text-sm text-text-primary focus:outline-none transition-all"
+                />
+                <button
+                  type="button"
+                  :disabled="
+                    refreshCoverLoading ||
+                    (showEditModal
+                      ? !editForm.musicPlatform || !editForm.musicId
+                      : !addForm.musicPlatform || !addForm.musicId)
+                  "
+                  class="px-4 py-3 bg-bg-tertiary-50 hover:bg-bg-quaternary text-text-secondary text-xs font-bold rounded-lg transition-all border border-border-tertiary-30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
+                  :title="locale.editModal.refreshCover"
+                  @click="refreshCoverInModal"
+                >
+                  <RotateCcw :size="14" :class="{ 'animate-spin': refreshCoverLoading }" />
+                  {{ locale.editModal.refreshCover }}
+                </button>
+              </div>
               <p
                 v-if="
                   (showEditModal ? editCoverValidation.valid : addCoverValidation.valid) &&
@@ -1113,6 +1166,7 @@
 import { computed, onMounted, ref, watch, onUnmounted } from 'vue'
 import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 import VotersModal from '~/components/Admin/VotersModal.vue'
+import DuplicateSongsModal from '~/components/Admin/DuplicateSongsModal.vue'
 import SongDownloadDialog from '~/components/Admin/SongDownloadDialog.vue'
 import SubmissionRemarkDialog from '~/components/Admin/SubmissionRemarkDialog.vue'
 import Pagination from '~/components/UI/Common/Pagination.vue'
@@ -1121,6 +1175,7 @@ import AppSpinner from '~/components/UI/Common/AppSpinner.vue'
 import {
   Search,
   Plus,
+  Copy,
   RotateCcw,
   Edit2,
   Check,
@@ -1144,7 +1199,9 @@ import { useToast } from '~/composables/useToast'
 import { useSemesters } from '~/composables/useSemesters'
 import { useSongPlayer } from '~/composables/useSongPlayer'
 import { useLocale } from '~/utils/locale'
+import { useServerErrors } from '~/composables/useLocaleText'
 import { isBilibiliSong } from '~/utils/bilibiliSource'
+import { normalizeForMatch } from '~/utils/song-name-normalize'
 import { validateUrl, convertToHttps } from '~/utils/url'
 import { formatDuration } from '~/utils/timeUtils'
 import dayjs from 'dayjs'
@@ -1154,6 +1211,7 @@ dayjs.extend(customParseFormat)
 
 // 响应式数据
 const { showToast: showNotification } = useToast()
+const { localize: localizeServerError } = useServerErrors()
 const { admin } = useLocale()
 const locale = computed(() => {
   const base = admin.value?.songManagement || {}
@@ -1234,6 +1292,9 @@ const deleteAction = ref(null)
 const showVotersModal = ref(false)
 const selectedSongId = ref(null)
 
+// 重复歌曲检测弹窗相关
+const showDuplicateModal = ref(false)
+
 // 下载对话框相关
 const showDownloadDialog = ref(false)
 const selectedSongsForDownload = ref([])
@@ -1255,6 +1316,9 @@ const showRejectDialog = ref(false)
 const rejectLoading = ref(false)
 const rejectReason = ref('')
 const addToBlacklist = ref(false)
+// 批量驳回模式下的歌曲 ID 列表，非空数组表示批量模式
+const batchRejectIds = ref([])
+const isBatchReject = computed(() => batchRejectIds.value.length > 0)
 const rejectSongInfo = ref({
   id: null,
   title: '',
@@ -1266,6 +1330,7 @@ const rejectSongInfo = ref({
 const showEditModal = ref(false)
 const editLoading = ref(false)
 const refreshDurationLoading = ref(false)
+const refreshCoverLoading = ref(false)
 const editForm = ref({
   id: null,
   title: '',
@@ -1420,6 +1485,33 @@ const filteredSongs = computed(() => {
   })
 
   return filtered
+})
+
+// 归一化歌名+歌手一致的视为重复，仅在当前筛选结果内分组
+const duplicateGroups = computed(() => {
+  const grouped = new Map()
+
+  for (const song of filteredSongs.value) {
+    const normalizedTitle = normalizeForMatch(song.title)
+    const normalizedArtist = normalizeForMatch(song.artist)
+    if (!normalizedTitle || !normalizedArtist) continue
+
+    const key = `${normalizedTitle}|${normalizedArtist}`
+    if (!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key).push(song)
+  }
+
+  return [...grouped.entries()]
+    .filter(([, list]) => list.length > 1)
+    .map(([key, list]) => ({
+      key,
+      title: list[0].title,
+      artist: list[0].artist,
+      songs: list,
+      sameSource:
+        list.every((song) => song.musicPlatform && song.musicId) &&
+        new Set(list.map((song) => `${song.musicPlatform}:${song.musicId}`)).size === 1
+    }))
 })
 
 const paginatedSongs = computed(() => {
@@ -1813,6 +1905,7 @@ const rejectSong = (songId) => {
   const song = songs.value.find((s) => s.id === songId)
   if (!song) return
 
+  batchRejectIds.value = []
   rejectSongInfo.value = {
     id: song.id,
     title: song.title || '',
@@ -1825,37 +1918,84 @@ const rejectSong = (songId) => {
   showRejectDialog.value = true
 }
 
-// 确认驳回
+// 批量驳回（复用单曲驳回对话框，batch 模式展示数量信息）
+const batchReject = () => {
+  if (selectedSongs.value.length === 0) return
+
+  batchRejectIds.value = [...selectedSongs.value]
+  rejectSongInfo.value = {
+    id: null,
+    title: '',
+    artist: '',
+    requester: ''
+  }
+
+  rejectReason.value = ''
+  addToBlacklist.value = false
+  showRejectDialog.value = true
+}
+
+// 确认驳回（单曲 / 批量共用对话框）
 const confirmReject = async () => {
   if (!rejectReason.value.trim()) {
     showNotification(getNestedMessage('errors', 'rejectReasonRequired'), 'error')
     return
   }
 
+  const isBatch = isBatchReject.value
+
   rejectLoading.value = true
   try {
-    await $fetch('/api/admin/songs/reject', {
-      method: 'POST',
-      body: {
-        songId: rejectSongInfo.value.id,
-        reason: rejectReason.value.trim(),
-        addToBlacklist: addToBlacklist.value
+    if (isBatch) {
+      const songIds = [...batchRejectIds.value]
+      const result = await $fetch('/api/admin/songs/batch-reject', {
+        method: 'POST',
+        body: {
+          songIds,
+          reason: rejectReason.value.trim(),
+          addToBlacklist: addToBlacklist.value
+        }
+      })
+
+      await refreshSongs(true)
+      showRejectDialog.value = false
+      batchRejectIds.value = []
+
+      const rejected = result?.data?.rejected ?? songIds.length
+      const missing = result?.data?.missing ?? 0
+      showNotification(
+        getNestedMessage('messages', 'batchRejectSuccess', rejected, missing),
+        missing > 0 ? 'warning' : 'success'
+      )
+    } else {
+      await $fetch('/api/admin/songs/reject', {
+        method: 'POST',
+        body: {
+          songId: rejectSongInfo.value.id,
+          reason: rejectReason.value.trim(),
+          addToBlacklist: addToBlacklist.value
+        }
+      })
+
+      await refreshSongs(true)
+
+      const index = selectedSongs.value.indexOf(rejectSongInfo.value.id)
+      if (index > -1) {
+        selectedSongs.value.splice(index, 1)
       }
-    })
 
-    await refreshSongs(true)
+      showRejectDialog.value = false
 
-    const index = selectedSongs.value.indexOf(rejectSongInfo.value.id)
-    if (index > -1) {
-      selectedSongs.value.splice(index, 1)
+      showNotification(getNestedMessage('messages', 'rejectSuccess'), 'success')
     }
-
-    showRejectDialog.value = false
-
-    showNotification(getNestedMessage('messages', 'rejectSuccess'), 'success')
   } catch (error) {
     console.error('驳回歌曲失败:', error)
-    showNotification(getNestedMessage('errors', 'rejectFailed', getErrorMessage(error)), 'error')
+    if (isBatch) {
+      // 批量接口按错误码本地化，避免服务端中文兜底文案在英文界面泄漏
+      showNotification(getNestedMessage('errors', 'batchRejectFailed', localizeServerError(error)), 'error')
+    } else {
+      showNotification(getNestedMessage('errors', 'rejectFailed', getErrorMessage(error)), 'error')
+    }
   } finally {
     rejectLoading.value = false
   }
@@ -1866,6 +2006,7 @@ const cancelReject = () => {
   showRejectDialog.value = false
   rejectReason.value = ''
   addToBlacklist.value = false
+  batchRejectIds.value = []
   rejectSongInfo.value = {
     id: null,
     title: '',
@@ -1914,6 +2055,12 @@ const editSong = (song) => {
   }
 
   showEditModal.value = true
+}
+
+// 从重复检测弹窗进入编辑：先关闭弹窗，避免与编辑模态框层级重叠
+const editFromDuplicate = (song) => {
+  showDuplicateModal.value = false
+  editSong(song)
 }
 
 const saveEditSong = async () => {
@@ -2025,6 +2172,42 @@ const refreshDurationInModal = async () => {
     showNotification(getNestedMessage('errors', 'durationRefreshFailed', getErrorMessage(error)), 'error')
   } finally {
     refreshDurationLoading.value = false
+  }
+}
+
+// 弹窗内刷新歌曲封面（编辑模式按 songId，新增模式按平台+音乐ID），仅填入表单随弹窗保存
+const refreshCoverInModal = async () => {
+  const isEdit = showEditModal.value
+  const form = isEdit ? editForm.value : addForm.value
+  if (!form.musicPlatform || !form.musicId) {
+    showNotification(getNestedMessage('errors', 'coverPlatformRequired'), 'warning')
+    return
+  }
+
+  refreshCoverLoading.value = true
+  try {
+    const body = isEdit
+      ? { songId: editForm.value.id }
+      : { platform: addForm.value.musicPlatform, musicId: addForm.value.musicId }
+    const result = await $fetch('/api/admin/songs/cover', {
+      method: 'POST',
+      body
+    })
+    if (result.success && result.cover) {
+      if (isEdit) {
+        editForm.value.cover = result.cover
+      } else {
+        addForm.value.cover = result.cover
+      }
+      showNotification(getNestedMessage('messages', 'coverRefreshed'), 'success')
+    } else {
+      showNotification(getNestedMessage('errors', 'coverRefreshFailed', result?.message), 'error')
+    }
+  } catch (error) {
+    console.error('刷新歌曲封面失败:', error)
+    showNotification(getNestedMessage('errors', 'coverRefreshFailed', getErrorMessage(error)), 'error')
+  } finally {
+    refreshCoverLoading.value = false
   }
 }
 

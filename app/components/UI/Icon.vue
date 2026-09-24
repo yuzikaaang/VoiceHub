@@ -199,6 +199,10 @@
     />
 
     <!-- 音乐图标 -->
+    <g v-else-if="name === 'ListMusic'">
+      <path d="M3 6h12M3 10h12M3 14h7M17 14V4l4 1v3l-4-1" />
+      <circle cx="14" cy="17" r="3" />
+    </g>
     <g v-else-if="name === 'music'">
       <path d="M9 18V5l12-2v13" />
       <circle cx="6" cy="18" r="3" />
@@ -236,6 +240,13 @@
     <g v-else-if="name === 'thumbs-up'">
       <path
         d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"
+      />
+    </g>
+
+    <!-- 实心拇指向上 -->
+    <g v-else-if="name === 'thumbs-up-filled'" fill="currentColor" stroke="none">
+      <path
+        d="M7 10v12H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3Zm2 12V10.65l3.12-7.02A2.75 2.75 0 0 1 17 6v3h2.59a3 3 0 0 1 2.96 3.49l-1.17 7A3 3 0 0 1 18.42 22H9Z"
       />
     </g>
 
