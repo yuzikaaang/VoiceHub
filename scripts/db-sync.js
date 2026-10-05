@@ -242,6 +242,9 @@ async function checkSchemaConsistency(sql) {
     'api_keys',
     'api_key_permissions',
     'api_logs',
+    'AstrbotBinding',
+    'AstrbotOutbox',
+    'AstrbotBindingCode',
     'BackupHistory',
     'CardCode',
     'CardCodeRedeemLog',
@@ -290,6 +293,9 @@ async function checkSchemaConsistency(sql) {
       'captchaProvider',
       'turnstileSiteKey',
       'turnstileSecretKey',
+      'esaCaptchaPrefix',
+      'esaCaptchaScenes',
+      'esaCaptchaRegion',
       'forcePasswordChangeOnFirstLogin',
       'allowOAuthRegistration',
       'allowRegister',
@@ -335,8 +341,11 @@ async function checkSchemaConsistency(sql) {
       'captchaEnabled',
       'captchaMaxFailures',
       'autoBackupEnabled',
-      'autoBackupConfig'
+      'autoBackupConfig',
+      'astrbotEnabled',
+      'astrbotPlatforms'
     ],
+    AstrbotOutbox: ['targetOwners', 'claimToken'],
     PasswordAuditLog: [
       'userId',
       'actorId',

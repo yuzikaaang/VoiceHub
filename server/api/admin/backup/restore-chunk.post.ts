@@ -29,6 +29,7 @@ import {
 import { and, eq, sql } from 'drizzle-orm'
 import { restoreScheduleSongPoolRecord } from '~~/server/utils/restoreScheduleSongPool'
 import { omitMaskedSystemSettingsSecrets } from '~~/server/api/admin/system-settings/secretMask'
+import { restoreAstrbotBindings } from '~~/server/utils/astrbot-backup'
 import { createApiError } from '~~/server/utils/apiError'
 import { validateThemeConfig } from '~~/server/utils/theme-config'
 import { SERVER_ERROR_CODES } from '~~/server/config/constants'
@@ -140,7 +141,8 @@ export default defineEventHandler(async (event) => {
                 'statusChangedBy',
                 'remark',
                 'avatarProvider',
-                'avatarProviderUserId'
+                'avatarProviderUserId',
+                'legalConsentVersion'
               ]
               const dateFields = [
                 'createdAt',
@@ -148,7 +150,8 @@ export default defineEventHandler(async (event) => {
                 'lastLogin',
                 'passwordChangedAt',
                 'meowBoundAt',
-                'statusChangedAt'
+                'statusChangedAt',
+                'legalConsentAt'
               ]
 
               userFields.forEach((field) => {
@@ -291,6 +294,7 @@ export default defineEventHandler(async (event) => {
               }
             }
 
+            await restoreAstrbotBindings(tx, createdUser.id, record)
             if (record.id && createdUser.id) {
               newMappings.users[record.id] = createdUser.id
             }
@@ -846,6 +850,7 @@ export default defineEventHandler(async (event) => {
               'submissionGuidelines',
               'icpNumber',
               'gonganNumber',
+              'showBeianIcon',
               'enableSubmissionLimit',
               'dailySubmissionLimit',
               'weeklySubmissionLimit',
@@ -877,6 +882,16 @@ export default defineEventHandler(async (event) => {
               'smtpPassword',
               'smtpFromEmail',
               'smtpFromName',
+              'astrbotEnabled',
+              'astrbotPlatforms',
+              'astrbotBaseUrl',
+              'astrbotToken',
+              'astrbotBroadcastEnabled',
+              'astrbotGroupTargets',
+              'astrbotGroupEvents',
+              'astrbotGroupThrottle',
+              'astrbotPushMode',
+              'astrbotWeeklyConfig',
               'allowOAuthRegistration',
               'allowRegister',
               'registerRequiresApproval',
@@ -921,10 +936,17 @@ export default defineEventHandler(async (event) => {
               'captchaProvider',
               'turnstileSiteKey',
               'turnstileSecretKey',
+              'esaCaptchaPrefix',
+              'esaCaptchaScenes',
+              'esaCaptchaRegion',
               'autoBackupEnabled',
               'autoBackupConfig',
               'statisticsCodeEnabled',
               'statisticsCode',
+              'legalConsentEnabled',
+              'legalConsentDisplayMode',
+              'legalConsentUpdatedDate',
+              'legalConsentDocuments',
               'enabledPlatforms',
               'platformOrder'
             ]

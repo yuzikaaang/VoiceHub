@@ -1,4 +1,6 @@
 import { MUSIC_SOURCE_PLATFORMS } from '~~/server/config/constants'
+import { DEFAULT_ASTRBOT_GROUP_EVENTS, DEFAULT_ASTRBOT_GROUP_THROTTLE } from '~~/server/utils/astrbot-group'
+import { DEFAULT_ASTRBOT_WEEKLY_CONFIG } from '~~/server/utils/astrbot-weekly-config'
 
 export const normalizeScheduleVisibilitySettings = (settings) => {
   for (const field of [
@@ -66,6 +68,20 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
   smtpPassword: null,
   smtpFromEmail: null,
   smtpFromName: '校园广播站',
+  astrbotEnabled: false,
+  astrbotPlatforms: { qq: false, wecom: false, dingtalk: false, lark: false },
+  astrbotBaseUrl: null,
+  astrbotToken: null,
+  astrbotBroadcastEnabled: false,
+  // 群广播目标由管理员在后台维护：UMO 前缀是 AstrBot 平台实例 ID，无法推断适配器，
+  // 因此每条目标显式记录所属平台与备注，投递时按平台开关逐个校验。
+  astrbotGroupTargets: [] as Array<{ umo: string; platform: string; label: string }>,
+  // 群事件开关：默认只开高频需求（新点歌投稿、注册待审核），其余按需开启。
+  astrbotGroupEvents: DEFAULT_ASTRBOT_GROUP_EVENTS,
+  // 防刷屏：同群同类型事件在窗口内合并为一条，并按单群频率上限节流。
+  astrbotGroupThrottle: DEFAULT_ASTRBOT_GROUP_THROTTLE,
+  astrbotPushMode: 'push',
+  astrbotWeeklyConfig: DEFAULT_ASTRBOT_WEEKLY_CONFIG,
   allowOAuthRegistration: false,
   allowRegister: false,
   registerRequiresApproval: true,
@@ -78,12 +94,21 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
   captchaProvider: 'graphic', // 默认使用图形验证码
   turnstileSiteKey: null,
   turnstileSecretKey: null,
+  // 阿里云 ESA AI 验证码（身份标与场景 ID 均由 ESA 控制台生成，非机密信息）
+  esaCaptchaPrefix: null,
+  // 场景 ID 规则列表：[{ endpoint: 'login' | 'register', host: '*', sceneId }]
+  esaCaptchaScenes: '[]',
+  esaCaptchaRegion: 'cn',
   // 自动备份
   autoBackupEnabled: false,
   autoBackupConfig: null,
   // 站点统计代码（任意统计平台 HTML/JS 片段）
   statisticsCodeEnabled: false,
   statisticsCode: null,
+  legalConsentEnabled: false,
+  legalConsentDisplayMode: 'modal',
+  legalConsentUpdatedDate: null,
+  legalConsentDocuments: '[]',
   // 主题管理
   defaultTheme: 'System',
   enabledThemes: JSON.stringify(['System', 'ClassicDark', 'ClassicLight', 'ModernLight']),
@@ -99,6 +124,10 @@ export const PUBLIC_SETTINGS_FIELDS = [
   'schoolLogoPrintUrl',
   'siteDescription',
   'submissionGuidelines',
+  'legalConsentEnabled',
+  'legalConsentDisplayMode',
+  'legalConsentUpdatedDate',
+  'legalConsentDocuments',
   'icpNumber',
   'gonganNumber',
   'showBeianIcon',
@@ -138,6 +167,9 @@ export const PUBLIC_SETTINGS_FIELDS = [
   'captchaMaxFailures',
   'captchaProvider',
   'turnstileSiteKey',
+  'esaCaptchaPrefix',
+  'esaCaptchaScenes',
+  'esaCaptchaRegion',
   'enabledPlatforms',
   'platformOrder',
   'defaultTheme',

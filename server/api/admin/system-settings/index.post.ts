@@ -2,16 +2,34 @@ import { db } from '~/drizzle/db'
 import { systemSettings } from '~/drizzle/schema'
 import { eq } from 'drizzle-orm'
 import { SMTP_PASSWORD_MASK, SECRET_FIELD_MASK, maskSystemSettingsSecrets } from './secretMask'
+import { isValidAstrbotWeeklyConfigInput, normalizeAstrbotWeeklyConfig } from '~~/server/utils/astrbot-weekly-config'
 import { SYSTEM_SETTINGS_DEFAULTS } from '~~/server/utils/system-settings-defaults'
+import { isAstrbotPullMode } from '~~/server/utils/astrbot-pull'
+import { parseLegalConsentDocuments } from '~~/server/utils/legal-consent'
 import {
   getAggregateOAuthLoginTypesOrDefault,
   isSafeAggregateOAuthUrl,
   normalizeAggregateOAuthLoginTypes
 } from '~~/server/utils/oauth-providers'
 import { createApiError } from '~~/server/utils/apiError'
-import { SERVER_ERROR_CODES, MUSIC_SOURCE_PLATFORMS, DEFAULT_THEMES } from '~~/server/config/constants'
+import {
+  SERVER_ERROR_CODES,
+  MUSIC_SOURCE_PLATFORMS,
+  DEFAULT_THEMES,
+  CAPTCHA_PROVIDERS,
+  ALIYUN_ESA_CAPTCHA_REGIONS
+} from '~~/server/config/constants'
 import { parseThemeArray, validateThemeConfig } from '~~/server/utils/theme-config'
 import { fetchGradeClassOptions } from '~~/server/utils/grade-class-options'
+import { normalizeAstrbotBaseUrl } from '~~/server/utils/astrbot-notification'
+import {
+  ASTRBOT_GROUP_EVENT_KEYS,
+  normalizeAstrbotGroupEvents,
+  normalizeAstrbotGroupTargets,
+  normalizeAstrbotGroupThrottle
+} from '~~/server/utils/astrbot-group'
+import { ASTRBOT_PLATFORMS } from '~~/server/utils/astrbot-platforms'
+import { ESA_CAPTCHA_ENDPOINTS, parseEsaCaptchaScenes } from '~/utils/esaCaptcha'
 
 /**
  * 解析数据库中存储的平台数组（历史脏数据/异常写入时回退默认值）
@@ -23,6 +41,72 @@ const parsePlatformStored = (value: unknown): string[] => {
   } catch {
     return [...MUSIC_SOURCE_PLATFORMS]
   }
+}
+
+/**
+ * 校验 ESA AI 验证码的场景 ID 规则列表（接口 + 域名 → 场景 ID）
+ * 与前端容错解析不同，后台保存时结构不完整一律拒绝，避免静默丢弃管理员的输入
+ * @param value JSON 字符串或已解析的数组
+ * @returns 规范化（域名小写去空白）后的规则列表
+ */
+const validateEsaCaptchaScenes = (
+  value: unknown
+): Array<{ endpoint: string; host: string; sceneId: string }> => {
+  if (value === undefined || value === null || value === '') return []
+
+  let parsed: unknown
+  try {
+    parsed = typeof value === 'string' ? JSON.parse(value) : value
+  } catch {
+    throw createApiError(
+      400,
+      SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_INVALID,
+      'esaCaptchaScenes 格式无效，应为合法 JSON 数组'
+    )
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw createApiError(
+      400,
+      SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_INVALID,
+      'esaCaptchaScenes 必须是数组'
+    )
+  }
+
+  const seen = new Set<string>()
+  return parsed.map((item: unknown) => {
+    const scene = item as { endpoint?: unknown; host?: unknown; sceneId?: unknown }
+    const endpoint = typeof scene?.endpoint === 'string' ? scene.endpoint : ''
+    const host = typeof scene?.host === 'string' ? scene.host.trim().toLowerCase() : ''
+    const sceneId = typeof scene?.sceneId === 'string' ? scene.sceneId.trim() : ''
+
+    if (!(ESA_CAPTCHA_ENDPOINTS as readonly string[]).includes(endpoint)) {
+      throw createApiError(
+        400,
+        SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_INVALID,
+        `场景配置的接口必须是 ${ESA_CAPTCHA_ENDPOINTS.join(' 或 ')}`
+      )
+    }
+    if (!host || !sceneId) {
+      throw createApiError(
+        400,
+        SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_INVALID,
+        '场景配置的域名与场景 ID 均不能为空'
+      )
+    }
+
+    const uniqueKey = `${endpoint}\u0001${host}`
+    if (seen.has(uniqueKey)) {
+      throw createApiError(
+        400,
+        SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_INVALID,
+        `同一接口下域名重复：${endpoint} / ${host}`
+      )
+    }
+    seen.add(uniqueKey)
+
+    return { endpoint, host, sceneId }
+  })
 }
 
 /**
@@ -199,6 +283,43 @@ export default defineEventHandler(async (event) => {
         throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, 'statisticsCode 必须是字符串或 null')
       }
       updateData.statisticsCode = body.statisticsCode
+    }
+
+    if (body.legalConsentEnabled !== undefined) {
+      if (typeof body.legalConsentEnabled !== 'boolean') throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '条款确认开关必须是布尔值')
+      updateData.legalConsentEnabled = body.legalConsentEnabled
+    }
+    if (body.legalConsentDisplayMode !== undefined) {
+      if (!['modal', 'checkbox'].includes(body.legalConsentDisplayMode)) throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '展示形式无效')
+      updateData.legalConsentDisplayMode = body.legalConsentDisplayMode
+    }
+    if (body.legalConsentUpdatedDate !== undefined) {
+      const date = body.legalConsentUpdatedDate || null
+      if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '条款更新日期格式无效')
+      updateData.legalConsentUpdatedDate = date
+    }
+    // 交叉校验：启用条款确认时（合并提交值与持久化值后）必须存在更新日期与合法的协议文档
+    const legalConsentEffectiveEnabled =
+      body.legalConsentEnabled !== undefined ? body.legalConsentEnabled === true : settings?.legalConsentEnabled === true
+    if (legalConsentEffectiveEnabled) {
+      const finalUpdatedDate =
+        body.legalConsentUpdatedDate !== undefined ? updateData.legalConsentUpdatedDate : settings?.legalConsentUpdatedDate
+      if (!finalUpdatedDate) throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '启用条款确认时必须填写条款更新日期')
+      const finalDocsRaw =
+        body.legalConsentDocuments !== undefined ? body.legalConsentDocuments : settings?.legalConsentDocuments
+      const finalDocs = parseLegalConsentDocuments(finalDocsRaw)
+      const docsInvalid =
+        !finalDocs.length ||
+        finalDocs.some((d) => !d?.name?.trim() || !d?.content?.trim() || !/^[A-Za-z0-9_-]+$/.test(d?.slug || '')) ||
+        new Set(finalDocs.map((d) => d.slug)).size !== finalDocs.length
+      if (docsInvalid) throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '启用条款确认时必须配置合法的协议文档')
+    }
+    if (body.legalConsentDocuments !== undefined) {
+      let docs
+      try { docs = typeof body.legalConsentDocuments === 'string' ? JSON.parse(body.legalConsentDocuments) : body.legalConsentDocuments } catch { docs = null }
+      const effectiveEnabled = body.legalConsentEnabled !== undefined ? body.legalConsentEnabled : settings?.legalConsentEnabled === true
+      if (!Array.isArray(docs) || (effectiveEnabled && (!docs.length || docs.some((d) => !d || !d.name?.trim() || !d.content?.trim() || !/^[A-Za-z0-9_-]+$/.test(d.slug || '')) || new Set(docs.map((d) => d.slug)).size !== docs.length))) throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '协议文档配置无效')
+      updateData.legalConsentDocuments = JSON.stringify(docs)
     }
 
     if (body.statisticsCodeEnabled !== undefined) {
@@ -452,12 +573,16 @@ export default defineEventHandler(async (event) => {
       updateData.captchaMaxFailures = body.captchaMaxFailures
     }
 
+    // 生效的服务商：本次提交优先，未提交时回落到已持久化值
+    const effectiveCaptchaProvider = body.captchaProvider ?? settings?.captchaProvider
+
     if (body.captchaProvider !== undefined) {
-      if (body.captchaProvider !== 'graphic' && body.captchaProvider !== 'turnstile') {
-        throw createError({
-          statusCode: 400,
-          message: 'captchaProvider 必须是 graphic 或 turnstile'
-        })
+      if (!CAPTCHA_PROVIDERS.includes(body.captchaProvider)) {
+        throw createApiError(
+          400,
+          SERVER_ERROR_CODES.SETTINGS_CAPTCHA_PROVIDER_INVALID,
+          `captchaProvider 必须是 ${CAPTCHA_PROVIDERS.join(' 或 ')}`
+        )
       }
 
       const nextTurnstileSiteKey =
@@ -480,12 +605,75 @@ export default defineEventHandler(async (event) => {
       updateData.captchaProvider = body.captchaProvider
     }
 
+    // ESA AI 验证码的身份标与场景 ID 由前端 SDK 使用，缺失时页面无法发起验证
+    // 只有 ESA 生效时才做拒绝式校验，其他服务商下未填完的占位行按容错丢弃
+    const nextEsaCaptchaPrefix =
+      body.esaCaptchaPrefix !== undefined ? body.esaCaptchaPrefix : settings?.esaCaptchaPrefix
+    const nextEsaCaptchaScenes =
+      body.esaCaptchaScenes !== undefined
+        ? effectiveCaptchaProvider === 'esa'
+          ? validateEsaCaptchaScenes(body.esaCaptchaScenes)
+          : parseEsaCaptchaScenes(body.esaCaptchaScenes)
+        : parseEsaCaptchaScenes(settings?.esaCaptchaScenes)
+
+    if (effectiveCaptchaProvider === 'esa') {
+      if (!nextEsaCaptchaPrefix) {
+        throw createApiError(
+          400,
+          SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_CREDENTIALS_MISSING,
+          '启用阿里云 ESA AI 验证码前，请先配置身份标'
+        )
+      }
+
+      // 一条 ESA 规则只覆盖一个接口，登录接口无场景 ID 时登录页无法初始化验证码
+      if (!nextEsaCaptchaScenes.some((scene) => scene.endpoint === 'login')) {
+        throw createApiError(
+          400,
+          SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_MISSING,
+          '启用阿里云 ESA AI 验证码前，请先为登录接口配置场景 ID'
+        )
+      }
+
+      // 注册入口开启时，注册接口需有自己独立的 ESA 规则与场景 ID
+      const nextAllowRegister =
+        body.allowRegister !== undefined ? body.allowRegister : settings?.allowRegister
+      if (
+        nextAllowRegister === true &&
+        !nextEsaCaptchaScenes.some((scene) => scene.endpoint === 'register')
+      ) {
+        throw createApiError(
+          400,
+          SERVER_ERROR_CODES.SETTINGS_ESA_CAPTCHA_SCENE_MISSING,
+          '开放用户注册时，请为注册接口配置场景 ID，或先关闭注册入口'
+        )
+      }
+    }
+
     if (body.turnstileSiteKey !== undefined) {
       updateData.turnstileSiteKey = body.turnstileSiteKey
     }
 
     if (body.turnstileSecretKey !== undefined && body.turnstileSecretKey !== SECRET_FIELD_MASK) {
       updateData.turnstileSecretKey = body.turnstileSecretKey
+    }
+
+    if (body.esaCaptchaPrefix !== undefined) {
+      updateData.esaCaptchaPrefix = body.esaCaptchaPrefix
+    }
+
+    if (body.esaCaptchaScenes !== undefined) {
+      updateData.esaCaptchaScenes = JSON.stringify(nextEsaCaptchaScenes)
+    }
+
+    if (body.esaCaptchaRegion !== undefined) {
+      if (!ALIYUN_ESA_CAPTCHA_REGIONS.includes(body.esaCaptchaRegion)) {
+        throw createApiError(
+          400,
+          SERVER_ERROR_CODES.COMMON_INVALID_PARAMS,
+          `esaCaptchaRegion 必须是 ${ALIYUN_ESA_CAPTCHA_REGIONS.join(' 或 ')}`
+        )
+      }
+      updateData.esaCaptchaRegion = body.esaCaptchaRegion
     }
 
     if (body.enableRequestTimeLimitation !== undefined) {
@@ -596,6 +784,100 @@ export default defineEventHandler(async (event) => {
 
     if (body.smtpFromName !== undefined) {
       updateData.smtpFromName = body.smtpFromName
+    }
+
+    // AstrBot 推送通道配置；密钥从不回显明文。
+    if (body.astrbotEnabled !== undefined) {
+      if (typeof body.astrbotEnabled !== 'boolean') {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, 'astrbotEnabled 必须是布尔值')
+      }
+      updateData.astrbotEnabled = body.astrbotEnabled
+    }
+    if (body.astrbotPlatforms !== undefined) {
+      const platforms = body.astrbotPlatforms
+      const keys = ASTRBOT_PLATFORMS
+      if (!platforms || typeof platforms !== 'object' || Array.isArray(platforms) ||
+        Object.keys(platforms).length !== keys.length ||
+        !keys.every((key) => typeof platforms[key] === 'boolean')) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '机器人平台开关格式无效')
+      }
+      updateData.astrbotPlatforms = Object.fromEntries(keys.map((key) => [key, platforms[key]]))
+    }
+    if (body.astrbotBroadcastEnabled !== undefined) {
+      if (typeof body.astrbotBroadcastEnabled !== 'boolean') {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '群聊推送开关必须是布尔值')
+      }
+      updateData.astrbotBroadcastEnabled = body.astrbotBroadcastEnabled
+    }
+    // 群目标白名单：每条显式标注平台归属，逐项规范化后保存（非法项丢弃而非整批拒绝，
+    // 管理员录入的一处笔误不应让整份配置无法保存）。
+    if (body.astrbotGroupTargets !== undefined) {
+      const targets = normalizeAstrbotGroupTargets(body.astrbotGroupTargets)
+      if (!targets) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '群聊推送目标必须是数组')
+      }
+      const dropped = body.astrbotGroupTargets.length - targets.length
+      if (dropped > 0) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS,
+          `有 ${dropped} 条群聊目标格式无效（需为「平台实例:GroupMessage:群号」，且平台受支持、不重复）`)
+      }
+      updateData.astrbotGroupTargets = targets
+    }
+    if (body.astrbotGroupEvents !== undefined) {
+      const events = body.astrbotGroupEvents
+      if (!events || typeof events !== 'object' || Array.isArray(events) ||
+        !ASTRBOT_GROUP_EVENT_KEYS.every((key) => typeof (events as Record<string, unknown>)[key] === 'boolean')) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '群聊事件开关格式无效')
+      }
+      updateData.astrbotGroupEvents = normalizeAstrbotGroupEvents(events)
+    }
+    if (body.astrbotGroupThrottle !== undefined) {
+      const throttle = body.astrbotGroupThrottle
+      if (!throttle || typeof throttle !== 'object' || Array.isArray(throttle) ||
+        typeof (throttle as Record<string, unknown>).mergeWindowSeconds !== 'number' ||
+        typeof (throttle as Record<string, unknown>).minIntervalSeconds !== 'number') {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '群聊节流参数格式无效')
+      }
+      updateData.astrbotGroupThrottle = normalizeAstrbotGroupThrottle(throttle)
+    }
+    if (body.astrbotPushMode !== undefined) {
+      if (!['push', 'pull'].includes(body.astrbotPushMode)) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '推送方向只能是 push 或 pull')
+      }
+      updateData.astrbotPushMode = body.astrbotPushMode
+    }
+    if (body.astrbotWeeklyConfig !== undefined) {
+      const config = body.astrbotWeeklyConfig
+      if (!isValidAstrbotWeeklyConfigInput(config)) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '本周歌单显示项格式无效')
+      }
+      updateData.astrbotWeeklyConfig = normalizeAstrbotWeeklyConfig(config)
+    }
+    if (body.astrbotBaseUrl !== undefined) {
+      if (typeof body.astrbotBaseUrl !== 'string' || body.astrbotBaseUrl.length > 2048) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '机器人地址无效')
+      }
+      const value = body.astrbotBaseUrl.trim() ? normalizeAstrbotBaseUrl(body.astrbotBaseUrl) : null
+      if (body.astrbotBaseUrl.trim() && !value) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '机器人地址必须为无凭证的 HTTP(S) 根地址')
+      }
+      updateData.astrbotBaseUrl = value || null
+    }
+    if (body.astrbotToken !== undefined && body.astrbotToken !== SECRET_FIELD_MASK) {
+      if (typeof body.astrbotToken !== 'string' || body.astrbotToken.length > 512) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS, '机器人令牌无效')
+      }
+      updateData.astrbotToken = body.astrbotToken.trim() || null
+    }
+    if (body.astrbotEnabled ?? settings?.astrbotEnabled) {
+      const token = body.astrbotToken !== undefined && body.astrbotToken !== SECRET_FIELD_MASK
+        ? updateData.astrbotToken : settings?.astrbotToken
+      const baseUrl = body.astrbotBaseUrl !== undefined ? updateData.astrbotBaseUrl : settings?.astrbotBaseUrl
+      const mode = body.astrbotPushMode ?? settings?.astrbotPushMode
+      if (!token || (!isAstrbotPullMode(mode) && !baseUrl)) {
+        throw createApiError(400, SERVER_ERROR_CODES.COMMON_INVALID_PARAMS,
+          isAstrbotPullMode(mode) ? '请先配置机器人令牌' : '请先配置机器人服务地址和令牌')
+      }
     }
 
     // OAuth 配置字段

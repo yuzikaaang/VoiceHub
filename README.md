@@ -613,6 +613,8 @@ VoiceHub 提供了完整的站点配置管理功能，支持通过管理后台�
 - **通知类型**：配置不同类型通知的发送规则
 - **通知模板**：自定义通知消息的格式和内容
 
+> **AstrBot 群事件投递边界**：群事件 push 仅支持常驻部署。合并窗口到期后的冲刷依赖常驻服务的定时任务；Vercel、Netlify 等按请求冻结实例的 Serverless 环境应在 VoiceHub 与 AstrBot 插件两端均选择 pull 模式，由插件主动领取并回执。切换模式前确认旧队列已处理，避免旧模式遗留条目滞留。
+
 ### 数据库备份与恢复
 
 系统提供了完整的数据备份和恢复解决方案：
@@ -741,7 +743,7 @@ VoiceHub/
 │   │           └── ModernLight.css # 现代浅色主题设计变量
 │   ├── components/            # Vue组件目录
 │   │   ├── Account/           # 账号管理组件
-│   │   │   └── SocialBindings.vue     # 社交账号绑定（邮箱/MeoW）
+│   │   │   └── SocialBindings.vue     # 社交账号绑定
 │   │   ├── Admin/             # 管理员功能组件
 │   │   │   ├── ApiKeyManager.vue      # API密钥管理
 │   │   │   ├── BackupAutoSettings.vue # 自动备份设置
@@ -779,6 +781,7 @@ VoiceHub/
 │   │   │   ├── SubmissionRemarkDialog.vue # 投稿备注弹窗
 │   │   │   ├── UserManager.vue        # 用户管理
 │   │   │   ├── UserApprovalModal.vue  # 用户注册审核弹窗
+│   │   │   ├── UserExportModal.vue    # 用户导出弹窗
 │   │   │   ├── GradeClassManager.vue  # 年级班级配置管理
 │   │   │   ├── UserSongsModal.vue     # 用户歌曲查看弹窗
 │   │   │   └── VotersModal.vue        # 投票人员查看弹窗
@@ -797,9 +800,11 @@ VoiceHub/
 │   │   │   ├── OAuthBindingCard.vue  # OAuth绑定卡片
 │   │   │   ├── CaptchaInput.vue      # 图形验证码输入组件
 │   │   │   ├── TurnstileWidget.vue   # Cloudflare Turnstile验证组件
+│   │   │   ├── EsaCaptchaWidget.vue  # 阿里云 ESA AI验证码组件
 │   │   │   ├── OAuthButtons.vue      # OAuth登录按钮组
 │   │   │   ├── OAuthQuickLogin.vue   # 微信/QQ内置浏览器快速登录按钮
 │   │   │   ├── OAuthBindReminderModal.vue # 微信/QQ内置浏览器账号密码登录绑定引导弹窗
+│   │   │   ├── LegalConsentModal.vue # 登录条款全局确认弹窗
 │   │   │   ├── TwoFactorSetup.vue    # 双重认证设置组件
 │   │   │   └── TwoFactorVerify.vue   # 双重认证验证组件
 │   │   ├── Common/            # 通用组件
@@ -838,7 +843,7 @@ VoiceHub/
 │   │   │   │   ├── ErrorBoundary.vue  # 错误边界组件
 │   │   │   │   ├── InputField.vue     # 通用输入框组件
 │   │   │   │   ├── LoadingState.vue   # 加载状态组件
-│   │   │   │   ├── MethodCard.vue     # 可展开卡片组件（带开关）
+│   │   │   │   ├── MethodCard.vue     # 可展开卡片组件
 │   │   │   │   ├── Pagination.vue     # 翻页组件
 │   │   │   │   ├── PasswordField.vue  # 密码输入框组件
 │   │   │   │   ├── Popover.vue        # 弹出框组件
@@ -882,6 +887,7 @@ VoiceHub/
 │   │   ├── useChkszSource.ts   # ChKSz音源hooks
 │   │   ├── useErrorHandler.ts  # 错误处理hooks
 │   │   ├── useImportantNotification.ts # 重要通知全局状态与已读处理
+│   │   ├── useLegalConsentPrompt.js # 全局登录条款确认弹窗状态hooks
 │   │   ├── useLocaleText.ts   # i18n 文案访问与服务端错误码本地化hooks
 │   │   ├── useLyricManager.ts  # 歌词管理hooks
 │   │   ├── useLyricPlayer.ts   # 类Apple Music风格歌词播放器hooks
@@ -906,7 +912,7 @@ VoiceHub/
 │   │   ├── useSongPlayer.ts    # 歌曲播放器hooks
 │   │   ├── useSongs.ts         # 歌曲管理hooks
 │   │   ├── useSyncedTime.ts    # 服务器时间对时hooks
-│   │   ├── useTheme.ts         # 主题管理（深色/浅色/现代浅色切换）
+│   │   ├── useTheme.ts         # 主题管理
 │   │   ├── useThemeImage.ts    # 主题图片获取
 │   │   ├── useToast.ts         # Toast提示hooks
 │   │   ├── useUserFilters.ts  # 用户过滤器hooks
@@ -930,6 +936,8 @@ VoiceHub/
 │   │   ├── dashboard.vue       # 用户仪表盘
 │   │   ├── forgot-password.vue # 找回密码页面
 │   │   ├── index.vue           # 首页
+│   │   ├── legal/              # 协议文档页面
+│   │   │   └── [slug].vue      # 协议文档内容页
 │   │   ├── login.vue           # 登录页面
 │   │   ├── notification-settings.vue # 通知设置页面
 │   │   ├── reset-password.vue  # 重置密码页面
@@ -942,7 +950,7 @@ VoiceHub/
 │   ├── public/                # 静态文件目录
 │   │   ├── images/            # 图片资源
 │   │   │   └── beian.png      # 备案图标
-│   │   ├── themes/            # 主题图片（按主题分目录，仅 SVG 随主题切换）
+│   │   ├── themes/            # 主题图片
 │   │   │   ├── ClassicDark/          # 经典深色主题图片
 │   │   │   │   ├── logo.svg   # SVG格式Logo
 │   │   │   │   ├── search.svg # 搜索图标
@@ -981,6 +989,7 @@ VoiceHub/
 │       ├── bilibiliSource.ts  # 哔哩哔哩音源
 │       ├── cover-theme.ts    # 封面取色与歌词主题色（AMLL 调色板）
 │       ├── debounce.ts       # 防抖工具
+│       ├── esaCaptcha.ts     # 阿里云 ESA AI验证码区域与服务端节点共享常量
 │       ├── grade-class-input.ts # 年级班级批量输入解析
 │       ├── gradeClassWeights.js # 年级排序权重
 │       ├── invalidPlaybackUrls.ts # 播放端确认无效的地址登记（换源时跳过坏链）
@@ -1161,6 +1170,7 @@ VoiceHub/
 │   │   │       ├── batch-status.put.ts # 批量状态更新
 │   │   │       ├── batch-update.post.ts # 批量更新用户
 │   │   │       ├── batch.post.ts    # 批量操作用户
+│   │   │       ├── export.get.ts    # 导出用户列表
 │   │   │       ├── index.get.ts     # 获取用户列表
 │   │   │       ├── index.post.ts    # 创建用户
 │   │   │       ├── index.ts         # 用户管理
@@ -1235,9 +1245,9 @@ VoiceHub/
 │   │   │   │   ├── check-login.post.ts # 检查扫码登录情况
 │   │   │   │   ├── check-wx-login.post.ts # 检查微信扫码登录状态
 │   │   │   │   ├── login-qr.get.ts  # 获取QQ登录二维码
-│   │   │   │   └── login-qr-wx.get.ts # 获取微信登录二维码
+│   │   │   │   ├── login-qr-wx.get.ts # 获取微信登录二维码
 │   │   │   │   ├── playlist-songs.post.ts # 获取QQ音乐歌单内歌曲
-│   │   │   │   └── playlists.post.ts # 获取用户创建与收藏的歌单
+│   │   │   │   ├── playlists.post.ts # 获取用户创建与收藏的歌单
 │   │   │   └── search/              # 搜索API
 │   │   │       ├── mg.get.ts        # 咪咕音乐搜索
 │   │   │       ├── tx.get.ts        # 腾讯音乐搜索
@@ -1245,6 +1255,11 @@ VoiceHub/
 │   │   ├── platform-config/  # 平台管理公开API
 │   │   │   └── index.get.ts      # 获取平台启用与排序配置
 │   │   ├── notifications/  # 通知系统API
+│   │   │   ├── astrbot/             # AstrBot 绑定码、状态、解绑与测试推送
+│   │   │   │   ├── bind-code.post.ts # 发放指定平台的绑定码
+│   │   │   │   ├── status.get.ts     # 查询四平台绑定状态
+│   │   │   │   ├── test.post.ts      # 向当前绑定目标发送测试推送
+│   │   │   │   └── unbind.post.ts    # 解除指定平台的绑定
 │   │   │   ├── [id]/                # 通知操作子目录
 │   │   │   │   └── read.post.ts     # 标记通知已读
 │   │   │   ├── [id].delete.ts       # 删除通知
@@ -1257,6 +1272,16 @@ VoiceHub/
 │   │   │   ├── read-all.post.ts     # 标记所有已读
 │   │   │   ├── settings.post.ts     # 更新通知设置
 │   │   │   └── settings.ts          # 获取通知设置
+│   │   ├── bot/            # AstrBot 插件令牌回调
+│   │   │   ├── voicehub/            # 私聊绑定、歌单与投递回调
+│   │   │   │   ├── bind.post.ts     # 一次性绑定码换取会话绑定
+│   │   │   │   ├── unbind.post.ts   # 机器人侧解绑当前会话
+│   │   │   │   ├── verify-targets.post.ts # 推送前核对私聊绑定、通知开关与群授权
+│   │   │   │   ├── pull.post.ts     # 领取待投递通知（pull 模式下插件轮询）
+│   │   │   │   ├── ack.post.ts      # 回执投递结果（claimToken 原样带回）
+│   │   │   │   ├── song-search.post.ts # 机器人侧点歌搜索
+│   │   │   │   ├── song-request.post.ts # 机器人侧点歌投稿
+│   │   │   │   └── weekly-schedule.get.ts # 本周歌单（支持 format=text 纯文本）
 │   │   ├── open/           # 开放API（无需认证）
 │   │   │   ├── card-codes/          # 点歌券开放API
 │   │   │   │   └── delete.post.ts   # 删除点歌券（兼容不支持 DELETE body 的代理）
@@ -1285,6 +1310,9 @@ VoiceHub/
 │   │   ├── semesters/      # 学期API
 │   │   │   ├── current.get.ts       # 获取当前学期
 │   │   │   └── options.get.ts       # 获取学期选项
+│   │   ├── legal-consent.get.ts      # 条款确认状态查询API
+│   │   ├── legal-consent.post.ts     # 条款同意记录API
+│   │   ├── legal-documents.get.ts    # 协议文档公开查询API
 │   │   ├── site-config.get.ts       # 站点配置API
 │   │   ├── songs/          # 歌曲相关API
 │   │   │   ├── [id]/                # 歌曲详情操作
@@ -1360,6 +1388,7 @@ VoiceHub/
 │   │   ├── cardCodeLifecycleService.ts # 点歌券生命周期服务
 │   │   ├── durationValidationService.ts # 歌曲时长校验与补齐服务
 │   │   ├── meowNotificationService.ts # MeoW通知服务
+│   │   ├── astrbotNotificationService.ts # AstrBot通知服务
 │   │   ├── notificationService.ts # 通知服务
 │   │   ├── oauthConfigService.ts # OAuth提供商配置与状态服务
 │   │   ├── passwordSecurityService.ts # 密码操作审计与限流服务
@@ -1371,6 +1400,12 @@ VoiceHub/
 │   │   ├── admin-password-policy.ts # 管理员重置密码基础校验策略
 │   │   ├── apiError.ts     # 统一错误码抛出助手 createApiError
 │   │   ├── apiKeyUtils.ts  # API Key生成、哈希与校验
+│   │   ├── astrbot-notification.ts # AstrBot 绑定码与目标校验
+│   │   ├── astrbot-adapters.js # 适配器平台映射（绑定鉴权与恢复共用）
+│   │   ├── astrbot-platforms.ts # 机器人四平台开关与目标筛选
+│   │   ├── astrbot-weekly-config.ts # 本周歌单显示配置与排版归一化（唯一权威）
+│   │   ├── astrbot-error-telemetry.ts # 群聊异常通知的脱敏与限长
+│   │   ├── astrbot-backup.ts # 四平台绑定备份恢复
 │   │   ├── auth.ts         # 认证工具函数
 │   │   ├── auth-route-policy.ts # 强制改密期间的接口访问策略
 │   │   ├── bilibiliWbi.ts  # Bilibili WBI签名工具
@@ -1415,6 +1450,7 @@ VoiceHub/
 │   │   ├── qqComment.ts    # QQ音乐评论数据归一化
 │   │   ├── qq_music_sdk.ts # QQ音乐SDK调用封装
 │   │   ├── rateLimiter.ts  # 请求速率限制工具
+│   │   ├── legal-consent.ts # 条款内容指纹计算与注册同意校验
 │   │   ├── register-validation.ts # 注册校验纯函数
 │   │   ├── registration-notify.ts # 注册结果通知
 │   │   ├── redis.ts        # 可选Redis连接与命名空间工具
@@ -1443,6 +1479,7 @@ VoiceHub/
 │   │   ├── user.ts         # 用户相关工具函数
 │   │   ├── user-archive.ts # 账号归档判定转发导出（权威实现在 app/utils）
 │   │   ├── user-avatar.ts  # OAuth 头像来源解析工具
+│   │   ├── user-filter.ts  # 用户列表/导出共用筛选条件构建
 │   │   ├── webauthn-config.ts # WebAuthn配置工具
 │   │   └── webauthn-token.ts # WebAuthn令牌工具
 │   └── tsconfig.json       # 服务端TypeScript配置
@@ -1461,27 +1498,6 @@ VoiceHub/
 │   ├── redis-scan-legacy.js # 旧Redis业务缓存键dry-run扫描工具
 │   ├── reset-database.js  # 重置数据库
 │   └── safe-migrate.js    # 安全迁移（带备份）
-├── tests/                 # 自动化测试
-│   └── server/             # 服务端策略与安全测试
-│       ├── auth-route-policy.test.ts # 强制改密路由策略测试
-│       ├── cors-origin-policy.test.ts # CORS 来源协议匹配测试
-│       ├── cover-image-url.test.ts # 封面尺寸参数处理测试
-│       ├── important-notification-policy.test.ts # 重要通知策略测试
-│       ├── initial-password-policy.test.ts # 初始密码状态策略测试
-│       ├── invalid-playback-urls.test.ts # 无效播放地址登记与淘汰测试
-│       ├── lyric-lrc-parse.test.ts # LRC 混合精度毫秒时间戳解析测试
-│       ├── music-source-plugin-platform.test.ts # 插件平台键解析测试
-│       ├── music-source-runtime.test.ts # 插件沙箱与网络策略测试
-│       ├── notification-history-policy.test.ts # 通知批次引用、筛选与分页策略测试
-│       ├── oauth-state-cookie.test.ts # OAuth state Cookie 安全测试
-│       ├── password-policy.test.ts # 密码策略测试
-│       ├── player-layout.test.ts # 播放器自由拖拽限位与偏好解析测试
-│       ├── qq-comment-normalize.test.ts # QQ音乐评论归一化测试
-│       ├── song-duration-policy.test.ts # 歌曲时长归一化与补齐决策测试
-│       ├── submission-restriction-policy.test.ts # 重复投稿限制模式判定测试
-│       ├── token-version-policy.test.ts # 令牌版本策略测试
-│       ├── user-archive.test.ts # 账号归档筛选参数解析测试
-│       └── user-avatar.test.ts # OAuth 头像来源解析测试
 ├── types/                 # TypeScript类型定义
 │   ├── global.d.ts         # 全局类型定义
 │   └── index.ts            # 通用类型定义
@@ -1528,7 +1544,6 @@ VoiceHub/
   - **`year-review/`**: 年度回顾功能组件
 - **`app/pages/`**: 页面组件，Nuxt 4 自动路由
 - **`app/composables/`**: Vue 3组合式API，业务逻辑复用
-  - **`useTheme.ts`**: 主题管理 composable，支持深色/浅色主题切换与 localStorage 持久化
 - **`app/drizzle/`**: Drizzle ORM配置、数据库连接和迁移文件
 
 #### 配置目录 (app/)

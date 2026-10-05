@@ -40,6 +40,8 @@ export const users = pgTable('User', {
   statusChangedBy: integer('statusChangedBy'),
   // 注册时可选填写的备注，管理员审核时可修改
   remark: text('remark'),
+  legalConsentVersion: text('legal_consent_version'),
+  legalConsentAt: timestamp('legal_consent_at'),
 }, (table) => [uniqueIndex('User_username_unique').on(table.username)]);
 
 // 登录会话表，id 与 JWT 的 jti 一致
@@ -237,6 +239,51 @@ export const notificationSettings = pgTable('NotificationSettings', {
   songVotedThreshold: integer('songVotedThreshold').default(1).notNull(),
 });
 
+// AstrBot 绑定码持久化，避免 serverless 多实例内存状态不一致。
+export const astrbotBindingCodes = pgTable('AstrbotBindingCode', {
+  userId: integer('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  platform: text('platform').notNull(),
+  codeHash: text('codeHash').notNull(),
+  expiresAt: timestamp('expiresAt', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumedAt', { withTimezone: true })
+}, (table) => [primaryKey({ columns: [table.userId, table.platform] }),
+  uniqueIndex('AstrbotBindingCode_hash_unique').on(table.codeHash)]);
+
+// 每个用户每个平台一条绑定；适配器名与 UMO 实例名分离存储。
+export const astrbotBindings = pgTable('AstrbotBinding', {
+  userId: integer('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  platform: text('platform').notNull(),
+  adapter: text('adapter').notNull(),
+  umo: text('umo').notNull(),
+  boundAt: timestamp('boundAt').defaultNow().notNull()
+}, (table) => [primaryKey({ columns: [table.userId, table.platform] }), uniqueIndex('AstrbotBinding_umo_unique').on(table.umo)]);
+
+// AstrBot 待投递队列：插件无法被 VoiceHub 访问（内网/NAT）时，由插件主动轮询取件。
+// 目标在入队时即由绑定表解析完毕，插件只按队列内容投递。
+export const astrbotOutbox = pgTable('AstrbotOutbox', {
+  id: serial('id').primaryKey(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  title: text('title'),
+  message: text('message').notNull(),
+  url: text('url'),
+  umos: jsonb('umos').$type<string[]>().default([]).notNull(),
+  // NULL 为迁移前队列：无法确认原绑定主体，领取时必须丢弃。
+  targetOwners: jsonb('targetOwners').$type<Record<string, { userId: number; boundAt: string }>>(),
+  broadcast: boolean('broadcast').default(false).notNull(),
+  // 群事件类型（新点歌投稿 / 注册待审核 / 备份失败…）。私聊通知为 NULL。
+  // 合并与冷却都以它 + 目标会话为键，避免把不同类型的事件混进同一条。
+  eventKey: text('eventKey'),
+  // 冷却闸门：早于该时刻不得投递。同群同类型事件在冷却期内合并为一条，
+  // 由领取逻辑与冲刷逻辑共同遵守。
+  notifyAfter: timestamp('notifyAfter', { withTimezone: true }),
+  attempts: integer('attempts').default(0).notNull(),
+  leasedUntil: timestamp('leasedUntil', { withTimezone: true }),
+  claimToken: text('claimToken'),
+  deliveredAt: timestamp('deliveredAt', { withTimezone: true }),
+  failedAt: timestamp('failedAt', { withTimezone: true }),
+  lastError: text('lastError')
+}, (table) => [index('astrbot_outbox_pending_idx').on(table.deliveredAt, table.failedAt, table.id)]);
+
 // 学期表
 export const semesters = pgTable('Semester', {
   id: serial('id').primaryKey(),
@@ -283,6 +330,37 @@ export const systemSettings = pgTable('SystemSettings', {
   smtpPassword: text('smtpPassword'),
   smtpFromEmail: text('smtpFromEmail'),
   smtpFromName: text('smtpFromName').default('校园广播站'),
+  astrbotEnabled: boolean('astrbotEnabled').default(false).notNull(),
+  astrbotPlatforms: jsonb('astrbotPlatforms').$type<{ qq: boolean; wecom: boolean; dingtalk: boolean; lark: boolean }>()
+    .default({ qq: false, wecom: false, dingtalk: false, lark: false }).notNull(),
+  astrbotBaseUrl: text('astrbotBaseUrl'),
+  astrbotToken: text('astrbotToken'),
+  astrbotBroadcastEnabled: boolean('astrbotBroadcastEnabled').default(false).notNull(),
+  // 群广播目标：UMO 前缀是 AstrBot 平台实例 ID（可被改名），无法从会话串推断平台，
+  // 因此每条目标显式记录所属平台与备注，投递与校验都以本列白名单为准。
+  astrbotGroupTargets: jsonb('astrbotGroupTargets').$type<Array<{ umo: string; platform: string; label: string }>>()
+    .default(sql`'[]'::jsonb`).notNull(),
+  // 群事件开关与防刷屏参数，均由后台按需配置。
+  astrbotGroupEvents: jsonb('astrbotGroupEvents').$type<Record<string, boolean>>(),
+  astrbotGroupThrottle: jsonb('astrbotGroupThrottle').$type<{ mergeWindowSeconds: number; minIntervalSeconds: number }>(),
+  // 推送方向：push = VoiceHub 主动 POST 到插件（需插件可被访问）；
+  // pull = 通知入队，由插件主动轮询领取（插件在内网/NAT 后时使用）。
+  astrbotPushMode: text('astrbotPushMode').default('push').notNull(),
+  astrbotWeeklyConfig: jsonb('astrbotWeeklyConfig').$type<{
+    layoutStyle?: 'classic' | 'table'
+    listColumns?: 1 | 2
+    showLogo?: boolean
+    showSchoolLogo?: boolean
+    showCover?: boolean
+    showTitle?: boolean
+    showArtist?: boolean
+    showRequester?: boolean
+    showVotes?: boolean
+    showSequence?: boolean
+    showPlayTime?: boolean
+    showDate?: boolean
+  }>()
+    .default({ showCover: true, showSequence: true, showRequester: true, showVotes: false, showPlayTime: true, showDate: true }).notNull(),
   enableRequestTimeLimitation: boolean('enableRequestTimeLimitation').default(false).notNull(),
   forceBlockAllRequests: boolean().default(false).notNull(),
   forcePasswordChangeOnFirstLogin: boolean('forcePasswordChangeOnFirstLogin').default(false).notNull(),
@@ -303,6 +381,10 @@ export const systemSettings = pgTable('SystemSettings', {
   captchaProvider: text('captchaProvider').default('graphic').notNull(),
   turnstileSiteKey: text('turnstileSiteKey'),
   turnstileSecretKey: text('turnstileSecretKey'),
+  // 阿里云 ESA AI 验证码：身份标 / 场景 ID 规则列表（JSON：接口 + 域名 → 场景 ID）/ 部署区域（cn=中国内地，sgp=新加坡）
+  esaCaptchaPrefix: text('esaCaptchaPrefix'),
+  esaCaptchaScenes: text('esaCaptchaScenes').default('[]').notNull(),
+  esaCaptchaRegion: text('esaCaptchaRegion').default('cn').notNull(),
   
   // 注册配置
   allowRegister: boolean('allowRegister').default(false).notNull(),
@@ -365,6 +447,10 @@ export const systemSettings = pgTable('SystemSettings', {
   // 站点统计代码（任意站点统计平台的 HTML/JS 片段，注入 SSR 页面 <head>）
   statisticsCodeEnabled: boolean('statisticsCodeEnabled').default(false).notNull(),
   statisticsCode: text('statisticsCode'),
+  legalConsentEnabled: boolean('legalConsentEnabled').default(false).notNull(),
+  legalConsentDisplayMode: text('legalConsentDisplayMode').default('modal').notNull(),
+  legalConsentUpdatedDate: text('legalConsentUpdatedDate'),
+  legalConsentDocuments: text('legalConsentDocuments').default('[]').notNull(),
 
   // 主题管理配置
   defaultTheme: text('defaultTheme').default('System').notNull(),

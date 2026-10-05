@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { db, users, userIdentities } from '~/drizzle/db'
 import { verifyBindingToken } from '~~/server/utils/oauth-token'
-import { getServerDate } from '~~/server/utils/serverTime'
+import { getServerDate, getServerTimestamp } from '~~/server/utils/serverTime'
 import { validateOAuthRegisterCredentials } from '~/utils/oauth-register'
 import { isSecureRequest } from '~~/server/utils/request-utils'
 import { createApiError } from '~~/server/utils/apiError'
@@ -12,6 +12,7 @@ import { isGradeClassValid } from '~~/server/utils/grade-class-options'
 import { getIdentityAvatarUrl } from '~~/server/utils/user-avatar'
 import { verifyEmailCode } from '~~/server/utils/email-verification'
 import { notifyRegistration } from '~~/server/utils/registration-notify'
+import { resolveRegisteredLegalConsentVersion } from '~~/server/utils/legal-consent'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -32,6 +33,10 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const { password, confirmPassword } = body
+
+  // 条款确认：开启登录条款后，必须显式提交与当前内容版本一致的同意版本
+  const legalConsentVersion = resolveRegisteredLegalConsentVersion(config, body)
+
   const username = typeof body.username === 'string' ? body.username.trim() : ''
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const selectedGrade = typeof body.grade === 'string' ? body.grade.trim() : ''
@@ -149,7 +154,9 @@ export default defineEventHandler(async (event) => {
           lastLogin: now,
           forcePasswordChange: false,
           avatarProvider: avatarUrl ? payload.provider : null,
-          avatarProviderUserId: avatarUrl ? payload.providerUserId : null
+          avatarProviderUserId: avatarUrl ? payload.providerUserId : null,
+          legalConsentVersion: legalConsentVersion || null,
+          legalConsentAt: legalConsentVersion ? now : null
         })
         .onConflictDoNothing()
         .returning({ id: users.id, tokenVersion: users.tokenVersion }))[0]
@@ -174,8 +181,8 @@ export default defineEventHandler(async (event) => {
     // 清除绑定令牌
     deleteCookie(event, 'binding-token')
 
-    // 注册通知（站内通知管理员 + 邮件；异步，失败不影响主流程）
-    void notifyRegistration(result.id, username, name, email, Boolean(config?.oauthRegisterRequiresApproval))
+    // 注册通知（站内通知管理员 + 邮件；失败不影响主流程）
+    await notifyRegistration(username, name, email, Boolean(config?.oauthRegisterRequiresApproval), { grade: selectedGrade, class: selectedClass })
 
     // 需要审核时：不签发登录态，等待管理员审核
     if (config?.oauthRegisterRequiresApproval) {
