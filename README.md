@@ -269,7 +269,8 @@ Podman 默认以当前用户身份运行，无需 `sudo`，安全性更高。但
 
 VoiceHub 现已支持飞牛 OS (FnOS) 的 `.fpk` 安装包。
 
-- 从 [GitHub Actions](https://github.com/laoshuikaixue/VoiceHub/actions/workflows/build-fpk.yml) 获取最新版本
+- 从 [GitHub Releases](https://github.com/laoshuikaixue/VoiceHub/releases) 获取最新版本（`.fpk` 随 Release 附带）
+- 或从 [GitHub Actions](https://github.com/laoshuikaixue/VoiceHub/actions/workflows/build-fpk.yml) 获取最新版本
 
 ### Nix / NixOS
 
@@ -361,6 +362,7 @@ NUXT_PUBLIC_HOST=https://voicehub.example.com
 推荐使用 [sops-nix](https://github.com/Mic92/sops-nix) 管理 secrets，避免明文存储在 Nix store 中。
 
 模块会自动设置 `DynamicUser`、`ProtectSystem=strict`、`NoNewPrivileges` 等安全加固。
+运行时可写数据（音源插件产物 `.data`、备份 `backups`、文件日志 `logs`）存放在 `/var/lib/voicehub`（systemd `StateDirectory`，`DynamicUser` 自动管理权限），升级重建不会丢失；只读产物仍来自 `/nix/store`。包内 `scripts/` 仅包含运行时脚本（deploy、db-sync、create-admin、build 等）；`pnpm run clear-db`、`pnpm run safe-migrate`、`pnpm run db:generate` 等维护命令需在源码仓库中执行。
 防火墙默认不开放端口，在配置中启用以允许外部访问：
 
 ```nix
@@ -672,6 +674,7 @@ VoiceHub 实现了细粒度的权限控制系统：
 | REDIS_URL              | 否   | Redis短期状态服务连接字符串，用于验证码、限流和临时锁定 | `redis://default:password@host:port`                                                                                                            |
 | REDIS_KEY_PREFIX       | 否   | Redis键命名空间，多环境共用Redis时应分别设置            | `voicehub:v2:`                                                                                                                                  |
 | NITRO_PRESET           | 否   | Nitro预设                                               | `vercel`                                                                                                                                        |
+| IS_SERVERLESS          | 否   | 声明为 Serverless 运行环境（连接池压低、备份改为直接返回数据、群事件投递器不启动）。平台未注入 `VERCEL`/`NETLIFY` 且未设置 `NITRO_PRESET` 时用它，如 EdgeOne Pages | `true` |
 | NUXT_PUBLIC_HOST       | 否   | 显式配置站点外部地址后启用内部 API 的 CORS 来源校验；未配置时仅对回环 Host（反向代理常见场景）跳过，云平台公开 Host 仍校验 | `https://your-app.com` |
 | NUXT_PUBLIC_SEO_CONFIG | 否   | 用于自定义 PWA/SEO 配置的 JSON 字符串                   | `{"title":"VoiceHub校园广播站点歌系统","shortName":"校园广播","description":"校园广播站点歌系统 - 让你的声音被听见","logo":"/images/logo.png"}` |
 
@@ -719,9 +722,12 @@ VoiceHub/
 ├── .github/                   # GitHub 配置目录
 │   └── workflows/             # GitHub Actions 工作流
 │       ├── build-fpk.yml      # FnOS FPK 安装包构建
+│       ├── db-migrate-test.yml # 空库全量数据库迁移校验
+│       ├── release.yml        # Release 发布流程
 │       ├── docker-build.yml   # Docker 镜像构建
 │       ├── docker-postgres.yml # PostgreSQL Docker 镜像构建
-│       └── nix.yml            # Nix 构建校验与 pnpmDeps 哈希同步
+│       ├── nix.yml            # Nix 构建校验与 pnpmDeps 哈希同步
+│       └── nix-flake-update.yml # Nix flake inputs 月度更新
 ├── app/                       # Nuxt 4 应用主目录
 │   ├── app.vue                # 应用入口文件
 │   ├── assets/                # 静态资源目录
@@ -776,6 +782,7 @@ VoiceHub/
 │   │   │   ├── Sidebar.vue            # 管理后台侧边栏
 │   │   │   ├── SiteConfigManager.vue  # 站点配置管理
 │   │   │   ├── SmtpManager.vue        # SMTP邮件服务管理
+│   │   │   ├── SystemBoard.vue        # 系统看板（进程/数据库/表规模/生效配置/运行事件）
 │   │   │   ├── SongDownloadDialog.vue # 歌曲下载弹窗
 │   │   │   ├── SongManagement.vue     # 歌曲管理
 │   │   │   ├── SubmissionRemarkDialog.vue # 投稿备注弹窗
@@ -886,6 +893,7 @@ VoiceHub/
 │   │   ├── useBilibiliPreview.ts # Bilibili视频预览hooks
 │   │   ├── useChkszSource.ts   # ChKSz音源hooks
 │   │   ├── useErrorHandler.ts  # 错误处理hooks
+│   │   ├── useHomeBootstrap.ts # 首页首屏数据 SSR 预取hooks
 │   │   ├── useImportantNotification.ts # 重要通知全局状态与已读处理
 │   │   ├── useLegalConsentPrompt.js # 全局登录条款确认弹窗状态hooks
 │   │   ├── useLocaleText.ts   # i18n 文案访问与服务端错误码本地化hooks
@@ -915,6 +923,7 @@ VoiceHub/
 │   │   ├── useTheme.ts         # 主题管理
 │   │   ├── useThemeImage.ts    # 主题图片获取
 │   │   ├── useToast.ts         # Toast提示hooks
+│   │   ├── useWakeLock.ts      # 播放屏幕常亮(Wake Lock)hooks
 │   │   ├── useUserFilters.ts  # 用户过滤器hooks
 │   │   └── useZIndex.ts        # 浮层动态层级hooks
 │   ├── drizzle/               # 数据库相关
@@ -1013,6 +1022,7 @@ VoiceHub/
 │       ├── password-policy.ts # 统一密码策略
 │       ├── oauth.ts           # OAuth工具
 │       ├── autoSchedule.ts    # 自动排期算法
+│       ├── schedulePlayTime.ts # 排期播出时段判定（带时段排期统计）
 │       ├── timeUtils.ts       # 时间工具
 │       ├── user-archive.ts    # 账号归档判定与筛选参数解析
 │       ├── webauthn.js        # WebAuthn浏览器兼容工具
@@ -1156,6 +1166,10 @@ VoiceHub/
 │   │   │   │   ├── index.post.ts    # 更新系统设置
 │   │   │   │   ├── index.ts         # 获取系统设置
 │   │   │   │   └── secretMask.ts    # 密钥脱敏工具
+│   │   │   ├── system-board/        # 系统看板API
+│   │   │   │   ├── events.get.ts    # 运行事件流（内存缓冲 + API错误 + 口令审计）
+│   │   │   │   ├── index.get.ts     # 看板快照（进程/数据库/表规模/生效配置）
+│   │   │   │   └── runtime-clear.post.ts # 清空运行事件缓冲
 │   │   │   └── users/               # 用户管理API
 │   │   │       ├── [id]/            # 用户详情操作子目录
 │   │   │       │   ├── reset-password.post.ts # 重置用户密码
@@ -1218,6 +1232,8 @@ VoiceHub/
 │   │   │   └── check.post.ts        # 检查黑名单
 │   │   ├── card-codes/     # 点歌券API
 │   │   │   └── validate.post.ts     # 验证点歌券可用性
+│   │   ├── captcha/        # 人机验证API
+│   │   │   └── verify.post.ts       # ESA 公共验证接口（边缘验签后签发短期凭证）
 │   │   ├── meow/           # MeoW账号绑定API
 │   │   │   ├── bind.post.ts         # 绑定MeoW账号
 │   │   │   └── unbind.post.ts       # 解绑MeoW账号
@@ -1248,6 +1264,7 @@ VoiceHub/
 │   │   │   │   ├── login-qr-wx.get.ts # 获取微信登录二维码
 │   │   │   │   ├── playlist-songs.post.ts # 获取QQ音乐歌单内歌曲
 │   │   │   │   ├── playlists.post.ts # 获取用户创建与收藏的歌单
+│   │   │   │   └── resolve-mid.get.ts # QQ数字songId解析为字母songmid
 │   │   │   └── search/              # 搜索API
 │   │   │       ├── mg.get.ts        # 咪咕音乐搜索
 │   │   │       ├── tx.get.ts        # 腾讯音乐搜索
@@ -1280,7 +1297,10 @@ VoiceHub/
 │   │   │   │   ├── pull.post.ts     # 领取待投递通知（pull 模式下插件轮询）
 │   │   │   │   ├── ack.post.ts      # 回执投递结果（claimToken 原样带回）
 │   │   │   │   ├── song-search.post.ts # 机器人侧点歌搜索
+│   │   │   │   ├── song-sources.get.ts # 机器人侧可用音源平台列表
+│   │   │   │   ├── song-resolve.post.ts # 机器人侧分享链接解析点歌
 │   │   │   │   ├── song-request.post.ts # 机器人侧点歌投稿
+│   │   │   │   ├── password-reset.post.ts # 机器人侧两步确认重置密码
 │   │   │   │   └── weekly-schedule.get.ts # 本周歌单（支持 format=text 纯文本）
 │   │   ├── open/           # 开放API（无需认证）
 │   │   │   ├── card-codes/          # 点歌券开放API
@@ -1395,6 +1415,7 @@ VoiceHub/
 │   │   ├── securityService.ts # 安全服务
 │   │   ├── songRequestService.ts # 点歌投稿服务
 │   │   ├── smtpService.ts  # SMTP邮件服务
+│   │   ├── systemBoardService.ts # 系统看板数据聚合服务
 │   │   └── userService.ts # 用户服务
 │   ├── utils/              # 服务端工具函数
 │   │   ├── admin-password-policy.ts # 管理员重置密码基础校验策略
@@ -1403,6 +1424,13 @@ VoiceHub/
 │   │   ├── astrbot-notification.ts # AstrBot 绑定码与目标校验
 │   │   ├── astrbot-adapters.js # 适配器平台映射（绑定鉴权与恢复共用）
 │   │   ├── astrbot-platforms.ts # 机器人四平台开关与目标筛选
+│   │   ├── astrbot-group.ts # 群广播目标与群事件配置规范化
+│   │   ├── astrbot-payload.ts # 推送请求体预算与分块
+│   │   ├── astrbot-pull.ts # pull 模式判定、取件序列化与回执校验
+│   │   ├── astrbot-share-link.ts # 点歌分享链接识别与 ID 提取
+│   │   ├── astrbot-song-search.ts # 机器人点歌统一音源搜索与候选归一化
+│   │   ├── astrbot-song-sources.ts # 机器人点歌各音源原始搜索取数
+│   │   ├── astrbot-password-reset.ts # 机器人重置密码两步确认密封令牌
 │   │   ├── astrbot-weekly-config.ts # 本周歌单显示配置与排版归一化（唯一权威）
 │   │   ├── astrbot-error-telemetry.ts # 群聊异常通知的脱敏与限长
 │   │   ├── astrbot-backup.ts # 四平台绑定备份恢复
@@ -1473,6 +1501,7 @@ VoiceHub/
 │   │   ├── submission-restriction-policy.ts # 重复投稿限制模式判定
 │   │   ├── system-settings-defaults.ts # 系统设置默认值
 │   │   ├── system-settings-helper.ts # 系统设置读取与强制改密判断工具
+│   │   ├── system-event-buffer.ts # 系统看板进程内运行事件环形缓冲
 │   │   ├── theme-config.ts # 主题配置校验与解析工具
 │   │   ├── userDisplayName.ts # 同名用户消歧统一口径（仅在读用户参与统计）
 │   │   ├── telemetry.ts    # 遥测与错误追踪工具
@@ -1487,6 +1516,7 @@ VoiceHub/
 │   ├── build.js           # 输出环境变量解析结果并执行插件构建与 Nuxt 构建
 │   ├── build-music-source-plugins.ts # 生成 Serverless 音源插件部署快照
 │   ├── check-deploy.js    # 部署前检查
+│   ├── ci-update-pnpm-hash.py # Nix CI 读写 pnpmDeps 哈希
 │   ├── clear-database.js  # 清空数据库
 │   ├── create-admin.js    # 创建管理员账户
 │   ├── db-sync.js         # 数据库同步
@@ -2386,6 +2416,10 @@ const transformMusicApiResponse = (response: any): any[] => {
 3. **提交规范**：
    - 请确保在提交 PR 前至少在本地测试过相关功能。
    - 请使用标准的 Git 提交规范。
+4. **署名与版权注释**：
+   - 本项目**不接受在源文件中添加个人版权注释**（如在文件末尾追加 `Copyright © ... 贡献者` 之类的署名行）。
+   - 贡献者署名**仅通过 Git 提交历史体现**；维护者在后续修改时会通过 `Co-authored-by:` trailer 保留你的贡献署名。
+   - 你保留自己贡献内容的版权，但请在提交 PR 前移除文件中的个人版权注释行，否则该 PR 无法按当前形式合并。
 
 ## 音乐服务免责声明
 

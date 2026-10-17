@@ -6,6 +6,7 @@ import { SUBMISSION_NOTE_STATUS } from '~~/server/config/constants'
 import {
   maskSongsInfo,
   stripAnonymousSongIdentifiers,
+  applySubmissionAnonymity,
   type MaskableSong
 } from '~~/server/utils/studentMask'
 import { formatDisambiguatedName, NAME_DISAMBIGUATION_CTES } from '~~/server/utils/userDisplayName'
@@ -48,8 +49,12 @@ interface SongResponse extends MaskableSong {
   hasSubmissionNote?: boolean
   submissionNote?: string | null
   submissionNotePublic?: boolean
+  submissionAnonymous?: boolean
   submissionNotePublicStatus?: string | null
   replayRequestId?: number | null
+  submissionCount?: number
+  playCount?: number
+  inPool?: boolean
 }
 
 const calculateReplayCooldown = (status?: string | null, updatedAt?: Date | string | null) => {
@@ -120,6 +125,7 @@ const loadBasicSongs = async (
     durationSeconds: null, playUrl: null,
     replayRequested: false, replayRequestCount: 0, isReplay: false, replayRequesters: [],
     hasSubmissionNote: false, submissionNote: null, submissionNotePublic: false,
+    submissionAnonymous: false,
     preferredPlayTimeId: null,
   })) as SongResponse[]
   if (hideStudentInfo && !isAdmin) maskSongsInfo(songs)
@@ -151,7 +157,13 @@ export default defineEventHandler(async (event) => {
       conditions.push(`(s.title ILIKE ${searchParam} OR s.artist ILIKE ${searchParam})`)
     }
     if (semester) conditions.push(`s.semester = ${addParam(semester)}`)
-    if (grade) conditions.push(`u.grade = ${addParam(grade)}`)
+    if (grade) {
+      conditions.push(`u.grade = ${addParam(grade)}`)
+      // 非管理员按年级筛选时排除匿名投稿，避免借筛选结果反推投稿人年级
+      if (!isAdmin) {
+        conditions.push(`(s."submissionAnonymous" = false OR s."requesterId" = $1)`)
+      }
+    }
     if (scope === 'mine' && user) conditions.push(`s.\"requesterId\" = $1`)
 
     const orderColumn =
@@ -168,9 +180,15 @@ export default defineEventHandler(async (event) => {
         ? `${orderColumn} ${sortOrder}, s.\"createdAt\" ASC`
         : `${orderColumn} ${sortOrder}`
 
+    // 备选池状态只供管理员使用，非管理员不查询也不下发
+    const poolCte = isAdmin ? `song_pool AS (SELECT DISTINCT "songId" FROM "ScheduleSongPool"),` : ''
+    const poolSelect = isAdmin ? '(sp."songId" IS NOT NULL) AS "inPool",' : ''
+    const poolJoin = isAdmin ? 'LEFT JOIN song_pool sp ON sp."songId" = s.id' : ''
+
     const baseQuery = `
       WITH
       ${NAME_DISAMBIGUATION_CTES},
+      ${poolCte}
       vote_counts AS (
         SELECT "songId", COUNT(*)::int AS vote_count
         FROM "Vote"
@@ -281,6 +299,7 @@ export default defineEventHandler(async (event) => {
         s."playUrl",
         s."submissionNote",
         s."submissionNotePublic",
+        s."submissionAnonymous",
         s."submissionNotePublicStatus",
         s."preferredPlayTimeId",
         u.id AS "requesterId",
@@ -299,6 +318,7 @@ export default defineEventHandler(async (event) => {
         ps."playDate" AS "scheduleDate",
         ps.played AS "schedulePlayed",
         (ps."songId" IS NOT NULL) AS scheduled,
+        ${poolSelect}
         COALESCE(rc.replay_count, 0) AS "replayRequestCount",
         cur.status AS "replayRequestStatus",
         cur.updated_at AS "replayRequestUpdatedAt",
@@ -320,6 +340,7 @@ export default defineEventHandler(async (event) => {
       LEFT JOIN vote_counts vc ON vc."songId" = s.id
       LEFT JOIN current_user_votes cuv ON cuv."songId" = s.id
       LEFT JOIN published_schedule ps ON ps."songId" = s.id
+      ${poolJoin}
       LEFT JOIN replay_counts rc ON rc.song_id = s.id
       LEFT JOIN current_user_replay cur ON cur.song_id = s.id
       LEFT JOIN latest_replay lr ON lr.song_id = s.id
@@ -331,6 +352,49 @@ export default defineEventHandler(async (event) => {
 
     const baseRows = await client.unsafe(baseQuery, params)
     const shouldHideStudentInfo = baseRows[0]?.hideStudentInfo ?? true
+
+    // 管理员扩展信息：统计每位投稿人的投稿次数与播出次数（按已播出的排期条目计）
+    const requesterStatsMap = new Map<number, { submissionCount: number; playCount: number }>()
+    if (isAdmin) {
+      const requesterIds = [
+        ...new Set(
+          baseRows
+            .map((row: any) => (row.requesterId ? Number(row.requesterId) : null))
+            .filter((id): id is number => id !== null)
+        )
+      ]
+      if (requesterIds.length > 0) {
+        // 与列表所选学期保持一致：投稿与播出均仅统计该学期内的记录
+        const statsParams: any[] = [requesterIds]
+        let semesterCondition = ''
+        if (semester) {
+          statsParams.push(semester)
+          semesterCondition = ` AND s.semester = $${statsParams.length}`
+        }
+        const statsRows = await client.unsafe(
+          `
+          SELECT
+            s."requesterId",
+            COUNT(DISTINCT s.id)::int AS "submissionCount",
+            COUNT(sch.id)::int AS "playCount"
+          FROM "Song" s
+          LEFT JOIN "Schedule" sch
+            ON sch."songId" = s.id
+            AND sch."isDraft" = false
+            AND sch.played = true
+          WHERE s."requesterId" = ANY($1::int[])${semesterCondition}
+          GROUP BY s."requesterId"
+        `,
+          statsParams
+        )
+        for (const statsRow of statsRows) {
+          requesterStatsMap.set(Number(statsRow.requesterId), {
+            submissionCount: Number(statsRow.submissionCount || 0),
+            playCount: Number(statsRow.playCount || 0)
+          })
+        }
+      }
+    }
 
     const formattedSongs: SongResponse[] = baseRows.map((row: any) => {
       const collaborators = Array.isArray(row.collaborators)
@@ -394,6 +458,7 @@ export default defineEventHandler(async (event) => {
         updatedAt: row.updatedAt,
         requestedAt: formatDateTime(row.createdAt),
         scheduled: row.scheduled === true,
+        ...(isAdmin ? { inPool: row.inPool === true } : {}),
         cover: row.cover || null,
         musicPlatform: row.musicPlatform || null,
         musicId: row.musicId || null,
@@ -407,9 +472,16 @@ export default defineEventHandler(async (event) => {
         hasSubmissionNote: canViewSubmissionNote,
         submissionNote: canViewSubmissionNote ? row.submissionNote : null,
         submissionNotePublic: canViewSubmissionNote ? row.submissionNotePublic === true : false,
+        submissionAnonymous: row.submissionAnonymous === true,
         submissionNotePublicStatus: canViewSubmissionNote ? (row.submissionNotePublicStatus || null) : null,
         replayRequestId: row.replayRequestId ? Number(row.replayRequestId) : null,
-        preferredPlayTimeId: row.preferredPlayTimeId ? Number(row.preferredPlayTimeId) : null
+        preferredPlayTimeId: row.preferredPlayTimeId ? Number(row.preferredPlayTimeId) : null,
+        ...(isAdmin && row.requesterId && requesterStatsMap.has(Number(row.requesterId))
+          ? {
+              submissionCount: requesterStatsMap.get(Number(row.requesterId))!.submissionCount,
+              playCount: requesterStatsMap.get(Number(row.requesterId))!.playCount
+            }
+          : {})
       }
 
       if (user) {
@@ -443,6 +515,8 @@ export default defineEventHandler(async (event) => {
     if (shouldHideStudentInfo && !isAdmin) {
       maskSongsInfo(formattedSongs)
     }
+    // 逐条匿名：与「隐藏学生信息」开关相互独立，管理员与投稿人本人不受影响
+    applySubmissionAnonymity(formattedSongs, { id: user?.id ?? null, isAdmin })
     if (!user) {
       formattedSongs.forEach(stripAnonymousSongIdentifiers)
     }
