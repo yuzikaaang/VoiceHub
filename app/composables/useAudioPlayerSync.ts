@@ -12,6 +12,8 @@ export const useAudioPlayerSync = () => {
   const control = useAudioPlayerControl()
   const musicWebSocket = useMusicWebSocket()
   const lyrics = useLyrics()
+  // serverless 部署：SSE 已被服务端拦截，状态广播无接收方，跳过连接与上报
+  const { isServerless } = useRuntimeConfig().public
 
   // 节流控制
   const lastWebSocketUpdate = ref(0)
@@ -183,8 +185,8 @@ export const useAudioPlayerSync = () => {
     const now = Date.now()
     const progressDiff = Math.abs(currentTime - lastProgressDiff.value)
 
-    // WebSocket状态更新（每2秒最多一次）
-    if (now - lastWebSocketUpdate.value > 2000) {
+    // WebSocket状态更新（每2秒最多一次；serverless 下无接收方，不上报）
+    if (!isServerless && now - lastWebSocketUpdate.value > 2000) {
       lastWebSocketUpdate.value = now
 
       musicWebSocket.sendStateUpdate({
@@ -227,7 +229,7 @@ export const useAudioPlayerSync = () => {
 
   // WebSocket 状态更新
   const sendWebSocketUpdate = (data: any) => {
-    if (isHarmonyOS()) {
+    if (isHarmonyOS() && !isServerless) {
       musicWebSocket.sendStateUpdate(data)
     }
   }
@@ -255,7 +257,10 @@ export const useAudioPlayerSync = () => {
         }
       }
 
-      const success = await globalAudioPlayer.playPrevious()
+      const navigation = globalAudioPlayer.playPrevious()
+      const request = globalAudioPlayer.getPlaybackRequest()
+      const success = await navigation
+      if (!globalAudioPlayer.isPlaybackRequestCurrent(request)) return { success: false, newSong: null }
 
       if (success) {
         const newSong = globalAudioPlayer.getCurrentSong().value
@@ -382,7 +387,10 @@ export const useAudioPlayerSync = () => {
         }
       }
 
-      const success = await globalAudioPlayer.playNext()
+      const navigation = globalAudioPlayer.playNext()
+      const request = globalAudioPlayer.getPlaybackRequest()
+      const success = await navigation
+      if (!globalAudioPlayer.isPlaybackRequestCurrent(request)) return { success: false, newSong: null }
 
       if (success) {
         const newSong = globalAudioPlayer.getCurrentSong().value
@@ -448,9 +456,9 @@ export const useAudioPlayerSync = () => {
   // 同步播放状态到全局
   const syncPlayStateToGlobal = (isPlaying: boolean, song?: any) => {
     if (isPlaying && song) {
-      globalAudioPlayer.playSong(song)
+      globalAudioPlayer.setPlaybackStatus(true)
     } else {
-      globalAudioPlayer.pauseSong()
+      globalAudioPlayer.pauseSong(false)
     }
   }
 
@@ -469,6 +477,7 @@ export const useAudioPlayerSync = () => {
 
   // 设置全局播放列表
   const setGlobalPlaylist = (song: any, playlist: any[]) => {
+    if (globalAudioPlayer.scheduleSource.value) return
     if (song && playlist && playlist.length > 0) {
       globalAudioPlayer.playSong(song, playlist)
     }
@@ -476,6 +485,7 @@ export const useAudioPlayerSync = () => {
 
   // 初始化 WebSocket 连接
   const initializeWebSocket = () => {
+    if (isServerless) return
     if (isHarmonyOS()) {
       const { getToken } = useAuth()
       const token = getToken()

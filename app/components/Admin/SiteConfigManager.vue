@@ -222,6 +222,52 @@
         </div>
       </section>
 
+      <!-- 自定义样式 -->
+      <section v-if="isSuperAdmin" :class="cardClass">
+        <h3
+          class="text-sm font-black text-text-primary uppercase tracking-widest flex items-center gap-2 border-b border-border-secondary pb-4"
+        >
+          <Brush :size="16" class="text-primary" /> {{ locale.customCssSection }}
+        </h3>
+        <div class="space-y-4">
+          <div class="pt-2">
+            <div
+              class="flex items-center justify-between p-3 bg-bg-primary-50 border border-border-secondary rounded-xl"
+            >
+              <div>
+                <p class="text-xs font-bold text-text-primary">{{ locale.customCssEnabled }}</p>
+                <p class="text-[10px] text-text-tertiary mt-0.5">{{ locale.customCssEnabledDesc }}</p>
+              </div>
+              <input
+                v-model="formData.customCssEnabled"
+                type="checkbox"
+                class="w-5 h-5 rounded border-border-secondary bg-bg-secondary cursor-pointer"
+              />
+            </div>
+          </div>
+          <div>
+            <label :class="labelClass">{{ locale.customCss }}</label>
+            <textarea
+              v-model="formData.customCss"
+              :rows="8"
+              :placeholder="locale.customCssPlaceholder"
+              :class="[inputClass, 'font-mono text-xs resize-y']"
+              :disabled="!formData.customCssEnabled"
+              :maxlength="CUSTOM_CSS_MAX_LENGTH"
+            />
+            <div class="flex items-start justify-between gap-3">
+              <p class="text-[10px] text-text-tertiary mt-1 leading-relaxed">{{ locale.customCssHint }}</p>
+              <p
+                class="text-[10px] font-mono shrink-0 whitespace-nowrap mt-1"
+                :class="customCssLength >= CUSTOM_CSS_MAX_LENGTH ? 'text-warning' : 'text-text-tertiary'"
+              >
+                {{ customCssLength }} / {{ CUSTOM_CSS_MAX_LENGTH }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 投稿逻辑设置 -->
       <section :class="cardClass">
         <h3
@@ -1017,7 +1063,12 @@
           <div class="legal-date-field">
             <label :class="labelClass">{{ locale.legalConsentUpdatedDate }}</label>
             <div class="legal-date-input-wrap mt-2">
-              <input v-model="formData.legalConsentUpdatedDate" type="date" :class="inputClass" />
+              <AppDatePicker
+                v-model="formData.legalConsentUpdatedDate"
+                size="md"
+                rounded="xl"
+                class-name="w-full"
+              />
             </div>
             <p class="legal-setting-hint">{{ locale.legalConsentUpdatedDateHint }}</p>
           </div>
@@ -1055,12 +1106,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Palette,
+  Brush,
   Star,
   Plus,
   CalendarRange
 } from '@lucide/vue'
 import AppSpinner from '~/components/UI/Common/AppSpinner.vue'
 import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
+import AppDatePicker from '~/components/UI/Common/AppDatePicker.vue'
 import EsaCaptchaWidget from '~/components/Auth/EsaCaptchaWidget.vue'
 import { useToast } from '~/composables/useToast'
 import { joinThemeLogoUrl, splitThemeLogoUrl, useSiteConfig } from '~/composables/useSiteConfig'
@@ -1078,6 +1131,8 @@ import {
 } from '~/utils/esaCaptcha'
 import { usePermissions } from '~/composables/usePermissions'
 import { THEMES } from '~/composables/useTheme'
+import { stripSuperAdminOnlySettingFields } from '~/utils/settingsPermissions'
+import { CUSTOM_CSS_MAX_LENGTH, trimCustomCss } from '~/utils/custom-css-policy'
 import OAuthConfigManager from './OAuthConfigManager.vue'
 
 const { showToast: showNotification } = useToast()
@@ -1086,6 +1141,8 @@ const { siteConfig: locale, theme: themeLocale } = useLocale()
 const { isSuperAdmin } = usePermissions()
 const { localize: localizeServerError } = useServerErrors()
 const themeOptions = computed(() => THEMES.map((value) => ({ value, label: themeLocale.value?.[value] || value })))
+
+const customCssLength = computed(() => trimCustomCss(formData.value.customCss).length)
 
 const setDefaultTheme = (theme) => {
   formData.value.defaultTheme = theme
@@ -1370,6 +1427,8 @@ const formData = ref({
   gonganNumber: '',
   statisticsCode: '',
   statisticsCodeEnabled: false,
+  customCss: '',
+  customCssEnabled: false,
   legalConsentEnabled: false,
   legalConsentDisplayMode: 'modal',
   legalConsentUpdatedDate: '',
@@ -1538,6 +1597,8 @@ const loadConfig = async () => {
       gonganNumber: data.gonganNumber || '',
       statisticsCode: data.statisticsCode || '',
       statisticsCodeEnabled: !!data.statisticsCodeEnabled,
+      customCss: data.customCss || '',
+      customCssEnabled: !!data.customCssEnabled,
       legalConsentEnabled: !!data.legalConsentEnabled,
       legalConsentDisplayMode: ['modal', 'checkbox'].includes(data.legalConsentDisplayMode) ? data.legalConsentDisplayMode : 'modal',
       legalConsentUpdatedDate: data.legalConsentUpdatedDate || '',
@@ -1645,8 +1706,11 @@ const saveConfig = async () => {
     const schoolLogoHomeLightUrl = schoolLogoHomeDarkUrl
       ? (formData.value.schoolLogoHomeLightUrl || '').trim()
       : ''
+    // 与服务端口径一致：仅在启用时提交，且提交 trim 后的值，避免刷新前显示与库不一致
+    const customCssDraft = trimCustomCss(formData.value.customCss)
     const configToSave = {
       ...formData.value,
+      ...(formData.value.customCssEnabled ? { customCss: customCssDraft } : {}),
       legalConsentDocuments: JSON.stringify(formData.value.legalConsentDocuments),
       esaCaptchaScenes: JSON.stringify(formData.value.esaCaptchaScenes),
       schoolLogoHomeUrl: joinThemeLogoUrl(
@@ -1682,18 +1746,20 @@ const saveConfig = async () => {
           }
         : {})
     }
-    if (!isSuperAdmin.value) {
-      delete configToSave.defaultTheme
-      delete configToSave.enabledThemes
-    }
-    delete configToSave.schoolLogoHomeDarkUrl
-    delete configToSave.schoolLogoHomeLightUrl
+    // 超管专属字段不提交，避免普通管理员保存整表单被接口拒绝
+    const requestPayload = isSuperAdmin.value
+      ? { ...configToSave }
+      : stripSuperAdminOnlySettingFields(configToSave)
+    delete requestPayload.schoolLogoHomeDarkUrl
+    delete requestPayload.schoolLogoHomeLightUrl
+    // 关闭开关时不提交该键：库里遗留的超限值不应让整表单被接口拒绝
+    if (!formData.value.customCssEnabled) delete requestPayload.customCss
 
     const response = await fetch('/api/admin/system-settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(configToSave)
+      body: JSON.stringify(requestPayload)
     })
 
     if (!response.ok) {
@@ -1721,6 +1787,7 @@ const saveConfig = async () => {
       ...formData.value,
       siteTitle: configToSave.siteTitle,
       siteLogoUrl: configToSave.siteLogoUrl,
+      ...(formData.value.customCssEnabled ? { customCss: customCssDraft } : {}),
       legalConsentUpdatedDate:
         savedSettings && typeof savedSettings.legalConsentUpdatedDate === 'string'
           ? savedSettings.legalConsentUpdatedDate
@@ -1834,29 +1901,6 @@ input[type='number'] {
 .legal-mode-option svg { width:14px; height:14px; flex:0 0 14px; }
 .legal-setting-hint { margin-top:10px; font-size:11px; line-height:1.6; }
 .legal-date-field { min-width:0; }
-.legal-date-input-wrap { position: relative; width: 100%; }
-.legal-date-input-wrap :deep(input[type="date"]) {
-  width: 100%;
-  color: var(--text-primary);
-}
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit),
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit-fields-wrapper),
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit-text),
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit-month-field),
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit-day-field),
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-datetime-edit-year-field) {
-  color: var(--text-primary);
-}
-/* 日历图标：深色主题下 UA 默认黑色图标在深色背景不可见，仅此时刷白；浅色主题保留默认黑色 */
-.legal-date-input-wrap :deep(input[type="date"]::-webkit-calendar-picker-indicator) {
-  cursor: pointer;
-  opacity: 1;
-}
-:root[data-theme='ClassicDark'] .legal-date-input-wrap :deep(input[type="date"]::-webkit-calendar-picker-indicator),
-:root[data-theme='ClassicDark'] .legal-date-input-wrap :deep(input[type="date"]::-webkit-calendar-picker-indicator:hover),
-:root[data-theme='ClassicDark'] .legal-date-input-wrap :deep(input[type="date"]:focus::-webkit-calendar-picker-indicator) {
-  filter: brightness(0) invert(1);
-}
 .legal-consent-panel > .grid { grid-template-columns:minmax(0,1fr) 240px; }
 @media (max-width:640px){.legal-consent-panel > .grid{grid-template-columns:1fr}}
 </style>

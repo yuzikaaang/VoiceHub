@@ -2,6 +2,7 @@ import { createError, defineEventHandler } from 'h3'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { isServerlessRuntime } from '~~/server/utils/serverless-runtime'
+import { BACKUP_FILE_PREFIXES } from '~~/server/utils/backup-filename'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event) => {
       // 如果目录不存在，尝试创建它
       try {
         await fs.mkdir(backupDir, { recursive: true })
-      } catch (mkdirError) {
+      } catch (mkdirError: any) {
         console.warn('无法创建备份目录，可能在只读文件系统中:', mkdirError.message)
         return {
           success: true,
@@ -53,18 +54,12 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // 读取备份目录中的文件
+    // 读取备份目录中的文件（前缀白名单与下载/删除端点共用同一权威定义）
     const files = await fs.readdir(backupDir)
     const backupFiles = files.filter(
       (file) =>
         file.endsWith('.json') &&
-        (file.startsWith('database-backup-') ||
-          file.startsWith('users-backup-') ||
-          file.startsWith('users-system-backup-') ||
-          file.startsWith('songs-backup-') ||
-          file.startsWith('songs-system-backup-') ||
-          file.startsWith('system-settings-backup-') ||
-          file.startsWith('uploaded-'))
+        BACKUP_FILE_PREFIXES.some((prefix) => file.startsWith(prefix))
     )
 
     const backups = []
@@ -95,13 +90,13 @@ export default defineEventHandler(async (event) => {
               totalRecords: backupData.totalUsers || backupData.users.length
             }
           }
-        } catch (parseError) {
+        } catch (parseError: any) {
           console.warn(`无法解析备份文件 ${filename}:`, parseError.message)
         }
 
         // 判断备份类型
         let type = 'users' // 默认为用户备份
-        if (filename.startsWith('database-backup-')) {
+        if (filename.startsWith('database-backup-') || filename.startsWith('auto-backup-')) {
           type = 'full'
         } else if (
           filename.startsWith('users-backup-') ||

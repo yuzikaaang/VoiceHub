@@ -20,7 +20,8 @@
 
 ### 🎵 核心功能
 
-- **智能点歌系统**：用户可以点歌或给已有歌曲投票，支持网易云音乐、QQ音乐和哔哩哔哩搜索，可选择期望播出时段
+- **智能点歌系统**：用户可以点歌或给已有歌曲投票，支持网易云音乐、QQ音乐和哔哩哔哩搜索，可选择期望播出日期与播出时段
+- **点歌券**：支持用户派发与回收。投稿后锁券，正式发布且标记已播放后核销；未播放时取消发布或换日保留绑定，撤回投稿归还点歌券。
 - **多平台登录支持**：
   - **OAuth 账户系统**：支持通过 GitHub、Casdoor 等 OAuth 提供商快速创建和登录账户
     - **直接创建账户**：用户通过 OAuth 认证后可创建新账户，但仍需设置本地用户名和密码
@@ -196,6 +197,8 @@ docker-compose up -d
 
 - 用户名：admin
 - 密码：admin123
+- 默认口令按临时密码处理，首次登录需设置新密码
+- 启动时自动检测仍在使用默认口令的超级管理员，补上强制改密标记
 
 #### 方式二：使用预构建镜像
 
@@ -538,6 +541,8 @@ pnpm run create-admin
 
 - 用户名：admin
 - 密码：admin123
+- 默认口令按临时密码处理，首次登录需设置新密码
+- 启动时自动检测仍在使用默认口令的超级管理员，补上强制改密标记
 
 6. 启动开发服务器
 
@@ -639,8 +644,8 @@ VoiceHub 实现了细粒度的权限控制系统：
 
 #### 角色类型
 
-- **超级管理员 (SUPER_ADMIN)**：拥有所有系统权限，包括用户管理、系统配置、数据库管理等
-- **管理员 (ADMIN)**：拥有日常管理权限，如用户管理、排期管理、歌曲管理、系统配置等
+- **超级管理员 (SUPER_ADMIN)**：拥有所有系统权限，包括用户管理、系统设置中的凭据与策略配置、备份恢复、数据库管理等
+- **管理员 (ADMIN)**：内容与用户日常管理权限，包括用户管理、排期管理、歌曲管理、点歌券、数据分析，以及投稿与播放限制、限额、卡密、音源平台等运营配置
 - **歌曲管理员 (SONG_ADMIN)**：专门负责歌曲相关管理，包括排期管理、歌曲管理、打印排期等
 - **普通用户 (USER)**：基本的点歌、投票和查看权限
 
@@ -653,7 +658,7 @@ VoiceHub 实现了细粒度的权限控制系统：
 #### 权限继承与分配
 
 - **SUPER_ADMIN**：拥有所有权限
-- **ADMIN**：拥有除数据库管理外的所有权限
+- **ADMIN**：内容与用户日常管理、运营类系统配置
 - **SONG_ADMIN**：拥有内容管理相关权限（排期、歌曲、打印）
 - **USER**：仅拥有基本的点歌和查看权限
 
@@ -669,7 +674,7 @@ VoiceHub 实现了细粒度的权限控制系统：
 | ---------------------- | ---- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | DATABASE_URL           | 是   | PostgreSQL数据库连接字符串                              | `postgresql://username:password@host:port/database?sslmode=require`                                                                             |
 | JWT_SECRET             | 是   | JWT令牌签名密钥，建议使用强随机字符串                   | `your-very-secure-jwt-secret-key`                                                                                                               |
-| TRUSTED_CLIENT_IP_HEADERS | 否 | 受信 CDN/反向代理真实 IP 头，多个值用逗号分隔；未配置时使用 TCP 连接地址 | `eo-connecting-ip` |
+| TRUSTED_CLIENT_IP_HEADERS | 否 | 受信 CDN/反向代理真实 IP 头，多个值用逗号分隔；未配置时公网直连只使用 TCP 连接地址，内网反代才回退读取转发头 | `eo-connecting-ip` |
 | NODE_ENV               | 否   | 运行环境，development或production                       | `production`                                                                                                                                    |
 | REDIS_URL              | 否   | Redis短期状态服务连接字符串，用于验证码、限流和临时锁定 | `redis://default:password@host:port`                                                                                                            |
 | REDIS_KEY_PREFIX       | 否   | Redis键命名空间，多环境共用Redis时应分别设置            | `voicehub:v2:`                                                                                                                                  |
@@ -756,6 +761,9 @@ VoiceHub/
 │   │   │   ├── BackupManager.vue      # 数据库备份管理
 │   │   │   ├── BatchUpdateModal.vue   # 批量更新模态框
 │   │   │   ├── BlacklistManager.vue   # 黑名单管理
+│   │   │   ├── CardCodeAvailablePicker.vue # 可用点歌券勾选面板
+│   │   │   ├── CardCodeDispatchModal.vue # 点歌券派发弹窗
+│   │   │   ├── CardCodeRecipientPicker.vue # 派发接收人搜索与年级班级圈选
 │   │   │   ├── CardCodesManager.vue   # 点歌券管理
 │   │   │   ├── DataAnalysisPanel.vue  # 数据分析面板
 │   │   │   ├── DatabaseManager.vue    # 数据库管理
@@ -785,6 +793,7 @@ VoiceHub/
 │   │   │   ├── SystemBoard.vue        # 系统看板（进程/数据库/表规模/生效配置/运行事件）
 │   │   │   ├── SongDownloadDialog.vue # 歌曲下载弹窗
 │   │   │   ├── SongManagement.vue     # 歌曲管理
+│   │   │   ├── SongSourceReplaceModal.vue # 歌曲换源弹窗（跨音源搜索与替换）
 │   │   │   ├── SubmissionRemarkDialog.vue # 投稿备注弹窗
 │   │   │   ├── UserManager.vue        # 用户管理
 │   │   │   ├── UserApprovalModal.vue  # 用户注册审核弹窗
@@ -835,7 +844,8 @@ VoiceHub/
 │   │   │   ├── RecentSongsModal.vue   # 最近播放弹窗
 │   │   │   ├── RequestForm.vue        # 点歌表单
 │   │   │   ├── ScheduleList.vue       # 排期列表展示
-│   │   │   └── SongList.vue           # 歌曲列表
+│   │   │   ├── SongList.vue           # 歌曲列表
+│   │   │   └── SubmissionOptionsModal.vue # 投稿选项弹窗
 │   │   ├── UI/                # 通用UI组件
 │   │   │   ├── AudioPlayer/   # 音频播放器组件模块
 │   │   │   │   ├── AudioElement.vue   # 音频元素组件
@@ -843,7 +853,10 @@ VoiceHub/
 │   │   │   │   ├── PlayerInfo.vue     # 播放器信息组件
 │   │   │   │   └── VolumeControl.vue  # 播放器音量控制组件
 │   │   │   ├── Common/        # 通用UI组件
+│   │   │   │   ├── AppDatePicker.vue # 自绘日期选择器
+│   │   │   │   ├── AppDateTimePicker.vue # 自绘日期时间选择器
 │   │   │   │   ├── AppSpinner.vue      # 通用加载转圈组件
+│   │   │   │   ├── AppTimePicker.vue   # 自绘时间选择器
 │   │   │   │   ├── CollapsibleSection.vue # 可折叠区域组件
 │   │   │   │   ├── CustomSelect.vue   # 自定义选择器
 │   │   │   │   ├── DataTable.vue      # 通用数据表格组件
@@ -910,14 +923,13 @@ VoiceHub/
 │   │   ├── usePermissions.ts   # 权限管理hooks
 │   │   ├── usePasswordStrength.ts # 密码强度检测hooks
 │   │   ├── usePlayerLayout.ts  # 播放器布局（固定底部/自由拖拽）偏好hooks
-│   │   ├── useProgress.ts      # 进度管理hooks
-│   │   ├── useProgressEvents.ts # 进度事件hooks
 │   │   ├── useRequestDedup.ts  # 请求去重hooks
 │   │   ├── useSafeLocale.ts    # 安全 i18n 文本包装hooks
 │   │   ├── useScrollMemory.ts  # 页面滚动位置记忆hooks
 │   │   ├── useSemesters.ts     # 学期管理hooks
 │   │   ├── useSiteConfig.js    # 站点配置hooks
 │   │   ├── useSongPlayer.ts    # 歌曲播放器hooks
+│   │   ├── useSchedulePlaylistSync.ts # 本标签页排期保存后的队列刷新与生命周期
 │   │   ├── useSongs.ts         # 歌曲管理hooks
 │   │   ├── useSyncedTime.ts    # 服务器时间对时hooks
 │   │   ├── useTheme.ts         # 主题管理
@@ -1012,17 +1024,24 @@ VoiceHub/
 │       ├── playerLayout.ts    # 播放器布局模式与自由拖拽坐标解析
 │       ├── blacklist.ts       # 歌曲类型黑名单候选值共享（语种/曲风）
 │       ├── sentryUpstreamMusicErrors.ts # Sentry 上游音源错误过滤
+│       ├── preview-duration.ts # 播放地址时长与歌曲时长比对（试听片段检测）
+│       ├── song-duration.ts   # 疑似试听片段时长判定
 │       ├── song-name-normalize.ts # 歌曲名称归一化匹配
 │       ├── neteaseApi.ts      # 网易云音乐API
+│       ├── neteaseCatalog.ts  # 网易云曲库播放响应的歌曲、音质与试听标记核验
 │       ├── qqCookie.ts        # QQ音乐登录Cookie存取与续期广播
 │       ├── qqUserLibrary.ts   # QQ音乐用户资料库（歌单/最近播放）
 │       ├── oauth-register.ts  # OAuth注册工具
 │       ├── email-verification.ts # 注册邮箱验证码
 │       ├── embedded-browser.ts # 微信/QQ内置浏览器UA检测
 │       ├── password-policy.ts # 统一密码策略
+│       ├── settingsPermissions.ts # 系统设置中仅超级管理员可读写字段清单
+│       ├── custom-css-policy.ts # 自定义CSS安全策略
 │       ├── oauth.ts           # OAuth工具
 │       ├── autoSchedule.ts    # 自动排期算法
 │       ├── schedulePlayTime.ts # 排期播出时段判定（带时段排期统计）
+│       ├── schedulePlaylist.ts # 排期队列身份匹配与续播位置
+│       ├── schedulePlaylistRefresh.ts # 排期队列按需串行刷新与旧结果丢弃
 │       ├── timeUtils.ts       # 时间工具
 │       ├── user-archive.ts    # 账号归档判定与筛选参数解析
 │       ├── webauthn.js        # WebAuthn浏览器兼容工具
@@ -1072,11 +1091,16 @@ VoiceHub/
 │   │   │   │   └── index.post.ts    # 新增配置项
 │   │   │   ├── card-codes/          # 点歌券管理API
 │   │   │   │   ├── [id].put.ts      # 更新单张点歌券
+│   │   │   │   ├── assignments.get.ts # 派发记录查询
+│   │   │   │   ├── assign.post.ts   # 派发点歌券给用户
 │   │   │   │   ├── create.post.ts   # 创建点歌券
 │   │   │   │   ├── delete.post.ts   # 删除点歌券
 │   │   │   │   ├── export.get.ts    # 导出点歌券
 │   │   │   │   ├── index.get.ts     # 获取点歌券列表
+│   │   │   │   ├── recipients.get.ts # 派发接收人查询
+│   │   │   │   ├── recipients-tree.get.ts # 按年级班级树查询接收人
 │   │   │   │   ├── redeem-logs.get.ts # 获取点歌券日志
+│   │   │   │   ├── recycle.post.ts  # 回收已派发未使用的点歌券
 │   │   │   │   └── update.post.ts   # 批量更新点歌券
 │   │   │   ├── database/            # 数据库管理API
 │   │   │   │   ├── cleanup.post.ts  # 数据库清理
@@ -1187,7 +1211,6 @@ VoiceHub/
 │   │   │       ├── export.get.ts    # 导出用户列表
 │   │   │       ├── index.get.ts     # 获取用户列表
 │   │   │       ├── index.post.ts    # 创建用户
-│   │   │       ├── index.ts         # 用户管理
 │   │   │       ├── options.ts       # 用户管理选项
 │   │   │       └── status-logs.get.ts # 用户状态日志
 │   │   ├── api-enhanced/          # 网易云音乐API
@@ -1231,6 +1254,7 @@ VoiceHub/
 │   │   ├── blacklist/      # 黑名单API
 │   │   │   └── check.post.ts        # 检查黑名单
 │   │   ├── card-codes/     # 点歌券API
+│   │   │   ├── mine.get.ts          # 查询当前用户持有的已派发券
 │   │   │   └── validate.post.ts     # 验证点歌券可用性
 │   │   ├── captcha/        # 人机验证API
 │   │   │   └── verify.post.ts       # ESA 公共验证接口（边缘验签后签发短期凭证）
@@ -1265,10 +1289,12 @@ VoiceHub/
 │   │   │   │   ├── playlist-songs.post.ts # 获取QQ音乐歌单内歌曲
 │   │   │   │   ├── playlists.post.ts # 获取用户创建与收藏的歌单
 │   │   │   │   └── resolve-mid.get.ts # QQ数字songId解析为字母songmid
-│   │   │   └── search/              # 搜索API
-│   │   │       ├── mg.get.ts        # 咪咕音乐搜索
-│   │   │       ├── tx.get.ts        # 腾讯音乐搜索
-│   │   │       └── wy.get.ts        # 网易云音乐搜索
+│   │   │   ├── search/              # 搜索API
+│   │   │   │   ├── mg.get.ts        # 咪咕音乐搜索
+│   │   │   │   ├── tx.get.ts        # 腾讯音乐搜索
+│   │   │   │   └── wy.get.ts        # 网易云音乐搜索
+│   │   │   └── wy/                   # 网易云音源代理API
+│   │   │       └── url.post.ts      # ikun 网易云备用源服务端代理取链
 │   │   ├── platform-config/  # 平台管理公开API
 │   │   │   └── index.get.ts      # 获取平台启用与排序配置
 │   │   ├── notifications/  # 通知系统API
@@ -1322,9 +1348,6 @@ VoiceHub/
 │   │   │   └── index.ts             # 播放时间管理
 │   │   ├── request-times/  # 点歌时间API
 │   │   │   └── index.ts             # 点歌时间管理
-│   │   ├── progress/       # 进度条API
-│   │   │   ├── events.ts            # 进度事件
-│   │   │   └── id.ts                # 进度ID管理
 │   │   ├── proxy/          # 代理服务API
 │   │   │   └── image.get.ts         # 图片代理（解决HTTP/HTTPS混合内容及跨域问题）
 │   │   ├── semesters/      # 学期API
@@ -1400,11 +1423,14 @@ VoiceHub/
 │   │   ├── 01.pre-warm-ssr.ts # SSR预热插件
 │   │   ├── error-handler.ts # 错误处理插件
 │   │   ├── redis-lifecycle.ts # Redis短期状态连接生命周期
+│   │   ├── custom-css.ts   # 自定义 CSS 注入插件
 │   │   └── statistics-code.ts # 站点统计代码注入插件
 │   ├── services/           # 业务服务层
 │   │   ├── apiLogService.ts # API日志服务
 │   │   ├── autoBackupService.ts # 自动备份服务
 │   │   ├── cardCodeDeleteService.ts # 点歌券删除服务
+│   │   ├── cardCodeAssignmentService.ts # 点歌券派发与回收服务
+│   │   ├── cardCodeGeneratorService.ts # 点歌券券码生成与入库服务
 │   │   ├── cardCodeLifecycleService.ts # 点歌券生命周期服务
 │   │   ├── durationValidationService.ts # 歌曲时长校验与补齐服务
 │   │   ├── meowNotificationService.ts # MeoW通知服务
@@ -1436,6 +1462,7 @@ VoiceHub/
 │   │   ├── astrbot-backup.ts # 四平台绑定备份恢复
 │   │   ├── auth.ts         # 认证工具函数
 │   │   ├── auth-route-policy.ts # 强制改密期间的接口访问策略
+│   │   ├── backup-filename.ts # 备份文件名白名单与路径遍历校验
 │   │   ├── bilibiliWbi.ts  # Bilibili WBI签名工具
 │   │   ├── captcha.ts      # 图形验证码生成工具
 │   │   ├── captchaStore.ts # 分布式短期状态与验证码哈希存储
@@ -1445,6 +1472,7 @@ VoiceHub/
 │   │   ├── geo.ts          # 地理位置工具
 │   │   ├── grade-class-core.ts # 年级班级选项纯函数
 │   │   ├── grade-class-options.ts # 年级班级选项提取工具
+│   │   ├── identity-secrets.ts # 身份响应脱敏（TOTP 共享密钥不回传）
 │   │   ├── initial-password-policy.ts # 初始密码设置状态策略
 │   │   ├── important-notification-policy.ts # 重要通知发送与展示策略
 │   │   ├── notification-history-policy.ts # 通知批次引用、筛选与分页策略
@@ -1467,6 +1495,7 @@ VoiceHub/
 │   │   │   ├── tickets.ts   # 加密凭证签发与校验
 │   │   │   └── types.ts     # 插件类型定义
 │   │   ├── native_common.ts # 原生API通用工具
+│   │   ├── music-resolve-rate-limit.ts # 匿名播放取链共享限流
 │   │   ├── native_tx.ts    # 腾讯音乐原生API
 │   │   ├── native_wy.ts    # 网易云音乐原生API
 │   │   ├── oauth-providers.ts # OAuth提供商类型与纯函数工具
@@ -1474,15 +1503,22 @@ VoiceHub/
 │   │   ├── oauth-token.ts  # OAuth令牌工具
 │   │   ├── oauth-identity.ts # OAuth身份绑定与头像同步工具
 │   │   ├── oauth.ts        # OAuth通用工具
+│   │   ├── outbound-url.ts # 备份出站地址校验、DNS 固定与重定向拦截
+│   │   ├── pagination.ts   # 分页参数解析与上限夹取
 │   │   ├── permissions.js  # 权限系统配置
 │   │   ├── qqComment.ts    # QQ音乐评论数据归一化
 │   │   ├── qq_music_sdk.ts # QQ音乐SDK调用封装
+│   │   ├── play-slot.ts    # 播出时段适用星期与播出日期校验
+│   │   ├── play-time-default.ts # 默认播出时段事务内清设工具
 │   │   ├── rateLimiter.ts  # 请求速率限制工具
 │   │   ├── legal-consent.ts # 条款内容指纹计算与注册同意校验
 │   │   ├── register-validation.ts # 注册校验纯函数
 │   │   ├── registration-notify.ts # 注册结果通知
 │   │   ├── redis.ts        # 可选Redis连接与命名空间工具
+│   │   ├── request-captcha.ts # 图形/Turnstile/ESA 人机验证统一校验
 │   │   ├── request-utils.ts # 请求处理通用工具
+│   │   ├── card-code-backup.ts # 点歌券与派发流水恢复
+│   │   ├── recipient-tree.ts # 派发接收人年级班级树构建
 │   │   ├── requireSongAdmin.ts # 歌曲管理员权限校验工具
 │   │   ├── song-duration-policy.ts # 歌曲时长归一化与补齐/清空决策
 │   │   ├── song-name-normalize.ts # 歌曲名称标准化匹配工具
@@ -1491,7 +1527,9 @@ VoiceHub/
 │   │   ├── songDurationFetcher.ts # 外部平台歌曲时长获取工具
 │   │   ├── restoreScheduleSongPool.ts # 排期备选池恢复工具
 │   │   ├── s3Client.ts     # S3 兼容存储客户端（AWS Signature V4）
-│   │   ├── scheduleReplayBinding.ts # 排期发布时履行并绑定重播申请
+│   │   ├── schedule-date-query.ts # 排期日期查询校验与 UTC 边界
+│   │   ├── schedulePlacementConstraint.ts # 排期落位硬约束（期望时段）
+│   │   ├── scheduleReplayBinding.ts # 排期重播绑定工具
 │   │   ├── scheduleSongPool.ts # 排期备选池统计工具
 │   │   ├── serverTime.ts   # 服务器时间工具
 │   │   ├── sequence-sync.ts # 自增序列同步工具
@@ -1503,6 +1541,7 @@ VoiceHub/
 │   │   ├── system-settings-helper.ts # 系统设置读取与强制改密判断工具
 │   │   ├── system-event-buffer.ts # 系统看板进程内运行事件环形缓冲
 │   │   ├── theme-config.ts # 主题配置校验与解析工具
+│   │   ├── ttl-cache.ts  # 模块级 TTL 缓存
 │   │   ├── userDisplayName.ts # 同名用户消歧统一口径（仅在读用户参与统计）
 │   │   ├── telemetry.ts    # 遥测与错误追踪工具
 │   │   ├── user.ts         # 用户相关工具函数
@@ -1528,6 +1567,9 @@ VoiceHub/
 │   ├── redis-scan-legacy.js # 旧Redis业务缓存键dry-run扫描工具
 │   ├── reset-database.js  # 重置数据库
 │   └── safe-migrate.js    # 安全迁移（带备份）
+├── tests/                 # 自动化测试（节选）
+│   └── frontend/          # 前端音源测试
+│       └── netease-catalog.test.ts # 网易云曲库响应核验与取链回归
 ├── types/                 # TypeScript类型定义
 │   ├── global.d.ts         # 全局类型定义
 │   └── index.ts            # 通用类型定义
@@ -1676,7 +1718,7 @@ app/assets/css/themes/
 
 ### 管理员
 
-1. 使用管理员账号登录（默认账号：admin，密码：admin123）
+1. 使用管理员账号登录（默认账号：admin，密码：admin123，首次登录需设置新密码）
 2. 进入管理后台，选择相应功能标签
 3. **排期管理**：可以看到左侧"待排歌曲"和右侧"播放顺序"
    - 通过拖拽将歌曲从左侧添加到右侧的排期列表

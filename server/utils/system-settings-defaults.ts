@@ -19,6 +19,7 @@ export const normalizeScheduleVisibilitySettings = (settings) => {
 export const SYSTEM_SETTINGS_DEFAULTS = {
   telemetryEnabled: true,
   enablePlayTimeSelection: false,
+  playSlotRequired: false,
   siteTitle: 'VoiceHub',
   siteLogoUrl: '/favicon.ico',
   schoolLogoHomeUrl: null,
@@ -110,6 +111,9 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
   // 站点统计代码（任意统计平台 HTML/JS 片段）
   statisticsCodeEnabled: false,
   statisticsCode: null,
+  // 自定义 CSS（全站样式表，注入 <head> 末尾）
+  customCssEnabled: false,
+  customCss: null,
   legalConsentEnabled: false,
   legalConsentDisplayMode: 'modal',
   legalConsentUpdatedDate: null,
@@ -137,6 +141,7 @@ export const PUBLIC_SETTINGS_FIELDS = [
   'gonganNumber',
   'showBeianIcon',
   'enablePlayTimeSelection',
+  'playSlotRequired',
   'enableSubmissionLimit',
   'dailySubmissionLimit',
   'weeklySubmissionLimit',

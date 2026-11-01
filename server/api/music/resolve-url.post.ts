@@ -1,4 +1,5 @@
 import { getTxSongPlayableInfo, upgradeTxAudioUrl } from '~~/server/utils/native_tx'
+import { enforceAnonymousMusicResolveRateLimit } from '~~/server/utils/music-resolve-rate-limit'
 import {
   getQqCookieDiagnostic,
   normalizeQqCookie,
@@ -102,6 +103,7 @@ const resolveTxWithHelloWorld = async (name: string) => {
 }
 
 export default defineEventHandler(async (event) => {
+  await enforceAnonymousMusicResolveRateLimit(event)
   const body = await readBody(event)
   const platform = String(body?.platform || '').trim()
   const musicId = body?.musicId

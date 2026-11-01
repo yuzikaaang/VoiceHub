@@ -28,6 +28,38 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
+          <!-- 桌面端批量播放状态 -->
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 scale-95 translate-x-10"
+            enter-to-class="opacity-100 scale-100 translate-x-0"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="opacity-100 scale-100 translate-x-0"
+            leave-to-class="opacity-0 scale-95 translate-x-10"
+          >
+            <div
+              v-if="selectedSongs.length > 0"
+              class="hidden sm:flex flex-row items-center gap-2 p-1.5 bg-bg-secondary-90 border border-border-secondary rounded-lg backdrop-blur-xl shadow-2xl"
+            >
+              <button
+                class="flex items-center justify-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-quaternary text-success text-[11px] font-black rounded-lg border border-border-tertiary-50 transition-all active:scale-95 uppercase tracking-widest"
+                @click="batchMarkPlayed"
+                :disabled="loading || batchMarking"
+              >
+                <Check :size="14" class="text-success-70" /> {{ locale.actions.batchMarkPlayed }} ({{
+                  selectedSongs.length
+                }})
+              </button>
+              <button
+                class="flex items-center justify-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-quaternary text-text-tertiary hover:text-text-primary text-[11px] font-black rounded-lg border border-border-tertiary-50 transition-all active:scale-95 uppercase tracking-widest"
+                @click="batchMarkUnplayed"
+                :disabled="loading || batchMarking"
+              >
+                <RotateCcw :size="14" /> {{ locale.actions.batchMarkUnplayed }} ({{ selectedSongs.length }})
+              </button>
+            </div>
+          </Transition>
+
           <!-- 桌面端批量操作 -->
           <Transition
             enter-active-class="transition duration-200 ease-out"
@@ -122,6 +154,13 @@
             value-key="id"
             :placeholder="locale.filters.selectPlayTime"
             class-name="w-full lg:w-40"
+          />
+          <AppDatePicker
+            v-model="selectedPlayDate"
+            :label="locale.filters.playDate"
+            class-name="w-full lg:w-40"
+            rounded="lg"
+            size="sm"
           />
           <CustomSelect
             v-model="statusFilter"
@@ -308,12 +347,19 @@
                 </span>
               </h4>
               <p class="text-xs text-text-tertiary font-medium truncate mt-0.5 flex items-center gap-1.5">
-                <span>{{ song.artist }}</span>
+                <span class="truncate min-w-0">{{ song.artist }}</span>
                 <span
                   v-if="song.durationSeconds"
                   class="text-text-disabled shrink-0"
                 >{{ formatDuration(song.durationSeconds) }}</span>
               </p>
+              <!-- 音源标识独立成行，避免歌手名过长时被挤掉 -->
+              <div v-if="song.musicPlatform" class="mt-1 flex">
+                <span
+                  class="platform-tag px-1 whitespace-nowrap"
+                  :class="'platform-' + platformTagClass(song.musicPlatform)"
+                >{{ platformLabel(song.musicPlatform) }}</span>
+              </div>
               <span
                 class="lg:hidden text-[9px] font-black text-text-secondary uppercase tracking-wider mt-1 inline-block"
                 >{{ formatDate(song.requestedAt) }}</span
@@ -332,8 +378,17 @@
                 <span v-if="song.user" class="text-[10px] font-bold text-text-disabled truncate max-w-[100px]"
                   >@{{ song.user.username }}</span
                 >
-                <span v-if="song.preferredPlayTimeId" class="text-[10px] font-bold text-primary mt-1">
-                  {{ getLocaleMessage('preferredPlayTime', getPlayTimeName(song.preferredPlayTimeId)) }}
+                <!-- 该投稿人累计投稿数与已播放数 -->
+                <span
+                  v-if="song.submissionCount != null && song.playCount != null"
+                  class="text-[10px] font-bold text-text-disabled mt-0.5 whitespace-nowrap"
+                >{{ locale.table.submitStat(song.submissionCount) }} · {{ locale.table.playStat(song.playCount) }}</span
+                >
+                <span
+                  v-if="song.preferredPlayTimeId || song.preferredPlayDate"
+                  class="text-[10px] font-bold text-primary mt-1"
+                >
+                  {{ getLocaleMessage('preferredPlayTime', formatPlaySlotDisplay(song)) }}
                 </span>
                 <span
                   class="hidden lg:inline text-[9px] font-black text-text-secondary uppercase tracking-widest mt-1 opacity-60"
@@ -459,33 +514,54 @@
     >
       <div
         v-if="selectedSongs.length > 0"
-        class="sm:hidden fixed bottom-[70px] left-4 right-4 z-40 bg-bg-secondary-95 border border-border-secondary rounded-2xl p-2 shadow-[0_8px_30px_var(--mobile-table-shadow)] backdrop-blur-xl flex items-center justify-between"
+        class="sm:hidden fixed bottom-[70px] left-4 right-4 z-40 bg-bg-secondary-95 border border-border-secondary rounded-2xl p-2 shadow-[0_8px_30px_var(--mobile-table-shadow)] backdrop-blur-xl flex flex-col gap-2"
       >
-        <div class="px-3 flex flex-col">
-          <span class="text-[10px] font-black text-text-tertiary uppercase tracking-widest">{{ locale.selected }}</span>
-          <span class="text-sm font-bold text-primary">{{ getLocaleMessage('selectedSongs', selectedSongs.length) }}</span>
+        <div class="flex items-center justify-between">
+          <div class="px-3 flex flex-col">
+            <span class="text-[10px] font-black text-text-tertiary uppercase tracking-widest">{{ locale.selected }}</span>
+            <span class="text-sm font-bold text-primary">{{ getLocaleMessage('selectedSongs', selectedSongs.length) }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-success rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+              @click="openDownloadDialog"
+            >
+              <Download :size="16" class="mb-1" />
+              <span class="text-[9px] font-bold">{{ locale.actions.download }}</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-warning rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+              @click="batchReject"
+            >
+              <X :size="16" class="mb-1" />
+              <span class="text-[9px] font-bold">{{ locale.actions.batchReject }}</span>
+            </button>
+            <button
+              class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-error rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+              @click="batchDelete"
+            >
+              <Trash2 :size="16" class="mb-1" />
+              <span class="text-[9px] font-bold">{{ locale.actions.delete }}</span>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
+        <!-- 批量播放状态 -->
+        <div class="flex items-center gap-2 border-t border-border-secondary-50 pt-2">
           <button
-            class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-success rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
-            @click="openDownloadDialog"
+            class="flex-1 flex items-center justify-center gap-2 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-success rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+            @click="batchMarkPlayed"
+            :disabled="loading || batchMarking"
           >
-            <Download :size="16" class="mb-1" />
-            <span class="text-[9px] font-bold">{{ locale.actions.download }}</span>
+            <Check :size="16" />
+            <span class="text-[10px] font-bold">{{ locale.actions.batchMarkPlayed }}</span>
           </button>
           <button
-            class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-warning rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
-            @click="batchReject"
+            class="flex-1 flex items-center justify-center gap-2 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-text-tertiary rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
+            @click="batchMarkUnplayed"
+            :disabled="loading || batchMarking"
           >
-            <X :size="16" class="mb-1" />
-            <span class="text-[9px] font-bold">{{ locale.actions.batchReject }}</span>
-          </button>
-          <button
-            class="flex flex-col items-center justify-center w-14 h-12 bg-bg-tertiary hover:bg-bg-quaternary text-error rounded-xl border border-border-tertiary-50 transition-all active:scale-95"
-            @click="batchDelete"
-          >
-            <Trash2 :size="16" class="mb-1" />
-            <span class="text-[9px] font-bold">{{ locale.actions.delete }}</span>
+            <RotateCcw :size="16" />
+            <span class="text-[10px] font-bold">{{ locale.actions.batchMarkUnplayed }}</span>
           </button>
         </div>
       </div>
@@ -503,6 +579,18 @@
       :cancel-text="locale.dialog.cancel"
       @confirm="confirmDelete"
       @close="showDeleteDialog = false"
+    />
+
+    <ConfirmDialog
+      :show="showPlaybackConfirm"
+      :title="playbackConfirmTitle"
+      :message="playbackConfirmMessage"
+      :loading="batchMarking"
+      :type="playbackConfirmMode === 'played' ? 'success' : 'warning'"
+      :confirm-text="playbackConfirmMode === 'played' ? locale.actions.batchMarkPlayed : locale.actions.batchMarkUnplayed"
+      :cancel-text="locale.dialog.cancel"
+      @confirm="confirmPlaybackChange"
+      @close="closePlaybackConfirm"
     />
 
     <SubmissionRemarkDialog
@@ -888,6 +976,17 @@
                   :placeholder="locale.editModal.selectPreferredPlayTime"
                 />
               </div>
+              <div v-if="showEditModal" class="space-y-2">
+                <AppDatePicker
+                  v-model="editForm.preferredPlayDate"
+                  :label="locale.editModal.preferredPlayDate"
+                  :placeholder="locale.editModal.preferredPlayDate"
+                  :min="playDateMin"
+                  class-name="w-full"
+                  rounded="lg"
+                  size="sm"
+                />
+              </div>
             </div>
 
             <div v-if="showEditModal" class="space-y-3">
@@ -988,29 +1087,35 @@
                 </label>
               </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-border-secondary-50">
+            <div class="flex items-center justify-between gap-3 pt-4 border-t border-border-secondary-50">
+              <span class="text-[10px] font-black text-text-disabled uppercase tracking-widest px-1">
+                {{ locale.sourceReplace.sectionTitle }}
+              </span>
+              <button
+                v-if="showEditModal"
+                type="button"
+                class="flex items-center gap-2 px-4 py-2 bg-primary-10 hover:bg-primary-20 text-primary text-[11px] font-black rounded-lg border border-primary-20 transition-all active:scale-95"
+                @click="openSourceReplaceModal"
+              >
+                <ArrowLeftRight :size="14" />
+                {{ locale.sourceReplace.button }}
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div class="space-y-2">
-                <label class="text-[10px] font-black text-text-disabled uppercase tracking-widest px-1"
-                  >{{ locale.editModal.musicPlatform }}</label
-                >
+                <label class="text-[10px] font-black text-text-disabled uppercase tracking-widest px-1">
+                  {{ locale.editModal.musicPlatform }}
+                </label>
                 <CustomSelect
                   v-if="showEditModal"
                   v-model="editForm.musicPlatform"
-                  :options="[
-                    { label: locale.platforms.netease, value: 'netease' },
-                    { label: locale.platforms.tencent, value: 'tencent' },
-                    { label: locale.platforms.bilibili, value: 'bilibili' }
-                  ]"
+                  :options="musicPlatformOptions"
                   :placeholder="locale.editModal.selectPlatform"
                 />
                 <CustomSelect
                   v-else
                   v-model="addForm.musicPlatform"
-                  :options="[
-                    { label: locale.platforms.netease, value: 'netease' },
-                    { label: locale.platforms.tencent, value: 'tencent' },
-                    { label: locale.platforms.bilibili, value: 'bilibili' }
-                  ]"
+                  :options="musicPlatformOptions"
                   :placeholder="locale.editModal.selectPlatform"
                 />
               </div>
@@ -1201,6 +1306,13 @@
         </div>
       </div>
     </Transition>
+
+    <SongSourceReplaceModal
+      :show="showSourceReplaceModal"
+      :song="sourceReplaceSong"
+      @close="showSourceReplaceModal = false"
+      @apply="applySourceReplacement"
+    />
   </div>
 </template>
 
@@ -1210,15 +1322,18 @@ import ConfirmDialog from '~/components/UI/ConfirmDialog.vue'
 import VotersModal from '~/components/Admin/VotersModal.vue'
 import DuplicateSongsModal from '~/components/Admin/DuplicateSongsModal.vue'
 import SongDownloadDialog from '~/components/Admin/SongDownloadDialog.vue'
+import SongSourceReplaceModal from '~/components/Admin/SongSourceReplaceModal.vue'
 import SubmissionRemarkDialog from '~/components/Admin/SubmissionRemarkDialog.vue'
 import Pagination from '~/components/UI/Common/Pagination.vue'
 import CustomSelect from '~/components/UI/Common/CustomSelect.vue'
+import AppDatePicker from '~/components/UI/Common/AppDatePicker.vue'
 import AppSpinner from '~/components/UI/Common/AppSpinner.vue'
 import {
   Search,
   Plus,
   Copy,
   RotateCcw,
+  ArrowLeftRight,
   Edit2,
   Check,
   X,
@@ -1245,10 +1360,12 @@ import { useSemesters } from '~/composables/useSemesters'
 import { useSongPlayer } from '~/composables/useSongPlayer'
 import { useLocale } from '~/utils/locale'
 import { useServerErrors } from '~/composables/useLocaleText'
+import { usePlatformConfig } from '~/composables/usePlatformConfig'
+import { BUILTIN_PLATFORMS, getPlatformDisplayName } from '~/utils/platforms'
 import { isBilibiliSong } from '~/utils/bilibiliSource'
 import { normalizeForMatch } from '~/utils/song-name-normalize'
 import { validateUrl, getCoverThumbUrl } from '~/utils/url'
-import { formatDuration } from '~/utils/timeUtils'
+import { formatDuration, getBeijingDateString, getBeijingWeekday } from '~/utils/timeUtils'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 
@@ -1257,7 +1374,7 @@ dayjs.extend(customParseFormat)
 // 响应式数据
 const { showToast: showNotification } = useToast()
 const { localize: localizeServerError } = useServerErrors()
-const { admin } = useLocale()
+const { admin, siteConfig, songs: songsLocale, currentLocale } = useLocale()
 const locale = computed(() => {
   const base = admin.value?.songManagement || {}
   const emptyText = () => ''
@@ -1287,6 +1404,7 @@ const locale = computed(() => {
 })
 const { msg: getLocaleMessage, nested: getNestedMessage } = useLocaleText(locale)
 const loading = ref(false)
+const batchMarking = ref(false)
 const searchQuery = ref('')
 const statusFilter = ref('all')
 const poolFilter = ref('all')
@@ -1310,6 +1428,8 @@ const selectedSemesterName = computed(() => {
 // 时段相关
 const selectedPlayTime = ref('all')
 const availablePlayTimes = ref([])
+// 播出日期筛选（YYYY-MM-DD，空 = 不限）
+const selectedPlayDate = ref('')
 
 // 选项配置
 const statusOptions = computed(() => [
@@ -1344,6 +1464,19 @@ const showDeleteDialog = ref(false)
 const deleteDialogTitle = ref('')
 const deleteDialogMessage = ref('')
 const deleteAction = ref(null)
+const showPlaybackConfirm = ref(false)
+const playbackConfirmMode = ref('played')
+const playbackConfirmSongIds = ref([])
+const playbackConfirmTitle = computed(() =>
+  playbackConfirmMode.value === 'played'
+    ? locale.value.dialog?.markPlayedTitle || '确认标记为已播放'
+    : locale.value.dialog?.markUnplayedTitle || '确认标记为未播放'
+)
+const playbackConfirmMessage = computed(() =>
+  playbackConfirmMode.value === 'played'
+    ? locale.value.dialog?.markPlayedMessage?.(playbackConfirmSongIds.value.length) || `确认标记 ${playbackConfirmSongIds.value.length} 首歌曲为已播放？`
+    : locale.value.dialog?.markUnplayedMessage?.(playbackConfirmSongIds.value.length) || `确认撤回 ${playbackConfirmSongIds.value.length} 首歌曲的已播放状态？`
+)
 
 // 投票人员弹窗相关
 const showVotersModal = ref(false)
@@ -1385,6 +1518,8 @@ const rejectSongInfo = ref({
 
 // 编辑歌曲相关
 const showEditModal = ref(false)
+// 期望播出日期可选下限：今天（北京时间），过往日期不可排期
+const playDateMin = computed(() => getBeijingDateString())
 const editLoading = ref(false)
 const refreshDurationLoading = ref(false)
 const refreshCoverLoading = ref(false)
@@ -1395,6 +1530,7 @@ const editForm = ref({
   requester: '',
   semester: '',
   preferredPlayTimeId: 'none',
+  preferredPlayDate: '',
   submissionNote: '',
   submissionNotePublic: false,
   submissionAnonymous: false,
@@ -1404,6 +1540,18 @@ const editForm = ref({
   playUrl: '',
   durationSeconds: ''
 })
+const showSourceReplaceModal = ref(false)
+// 换源选中的结果：仅在平台与音乐 ID 未被手动改动时随保存提交 selectionToken
+const editSourceSelection = ref(null)
+const originalEditMusicSource = ref({ platform: '', musicId: '' })
+const sourceReplaceSong = computed(() => ({
+  title: editForm.value.title,
+  artist: editForm.value.artist,
+  musicPlatform: editForm.value.musicPlatform,
+  musicId: editForm.value.musicId,
+  cover: editForm.value.cover,
+  durationSeconds: editForm.value.durationSeconds
+}))
 const originalEditSubmissionNote = ref('')
 const submissionNoteClearRequested = ref(false)
 const submissionNoteClearReason = ref('')
@@ -1424,6 +1572,23 @@ const addForm = ref({
   cover: '',
   playUrl: '',
   durationSeconds: ''
+})
+
+// 平台选项：内置平台按后台排序，插件音源使用插件显示名
+const { getAvailablePlatforms, loadPlatformConfig, pluginPlatforms } = usePlatformConfig()
+const platformLabel = (platform) => {
+  if (!platform) return ''
+  const plugin = pluginPlatforms.value.find((item) => item.platform === platform)
+  return plugin?.displayName || getPlatformDisplayName(platform, siteConfig.value, currentLocale.value)
+}
+// 平台标签配色类名，插件音源统一走 plugin
+const platformTagClass = (platform) => (BUILTIN_PLATFORMS.includes(platform) ? platform : 'plugin')
+const musicPlatformOptions = computed(() => {
+  const list = [...getAvailablePlatforms()]
+  for (const value of [editForm.value.musicPlatform, addForm.value.musicPlatform]) {
+    if (value && !list.includes(value)) list.push(value)
+  }
+  return list.map((platform) => ({ label: platformLabel(platform), value: platform }))
 })
 
 // URL验证状态
@@ -1494,6 +1659,11 @@ const baseFilteredSongs = computed(() => {
     })
   }
 
+  // 播出日期过滤（精确匹配用户点歌时选定的期望播出日期）
+  if (selectedPlayDate.value) {
+    filtered = filtered.filter((song) => song.preferredPlayDate === selectedPlayDate.value)
+  }
+
   return filtered
 })
 
@@ -1530,6 +1700,11 @@ const filteredSongs = computed(() => {
 
   // 排序
   filtered.sort((a, b) => {
+    // 使用点歌券的歌曲优先置顶，不随排序方式改变
+    const aCard = a.cardCodeId ? 1 : 0
+    const bCard = b.cardCodeId ? 1 : 0
+    if (aCard !== bCard) return bCard - aCard
+
     switch (sortOption.value) {
       case 'time-desc':
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
@@ -1657,6 +1832,20 @@ const getPlayTimeName = (playTimeId) => {
   if (!playTime) return ''
 
   return formatPlayTimeDisplay(playTime)
+}
+
+// 期望播出日期与时段
+const formatPlaySlotDisplay = (song) => {
+  const parts = []
+  if (song.preferredPlayDate) {
+    const weekday = getBeijingWeekday(song.preferredPlayDate)
+    const weekdayLabel = weekday === null ? '' : songsLocale.value?.requestForm?.weekdaysFull?.[weekday]
+    parts.push([song.preferredPlayDate, weekdayLabel].filter(Boolean).join(' '))
+  }
+  if (song.preferredPlayTimeId) {
+    parts.push(getPlayTimeName(song.preferredPlayTimeId))
+  }
+  return parts.join(' · ')
 }
 
 const getStatusText = (song) => {
@@ -1836,7 +2025,7 @@ const toggleSelectSong = (songId) => {
 const refreshSongs = async (forceRefresh = false) => {
   loading.value = true
   try {
-    await songsService.fetchSongs(false, undefined, forceRefresh)
+    await songsService.fetchSongs({ forceRefresh })
     songs.value = songsService.songs.value || []
     selectedSongs.value = []
   } catch (error) {
@@ -1846,25 +2035,81 @@ const refreshSongs = async (forceRefresh = false) => {
   }
 }
 
-const markAsPlayed = async (songId) => {
+const executePlaybackChange = async (songIds, unmark = false) => {
   try {
-    await songsService.markPlayed(songId)
+    const result = unmark
+      ? await $fetch('/api/admin/songs/mark-played', {
+          method: 'POST',
+          body: { songIds, unmark: true },
+          ...auth.getAuthConfig()
+        })
+      : await $fetch('/api/admin/songs/mark-played', {
+          method: 'POST',
+          body: { songIds },
+          ...auth.getAuthConfig()
+        })
     await refreshSongs()
+    return Number(result?.count || 0)
   } catch (error) {
-      console.error('标记已播放失败:', error)
-      showNotification(getNestedMessage('errors', 'markFailed', error?.data?.message || error?.message || error?.statusMessage || getLocaleMessage('unknownError')), 'error')
-    }
+    console.error(unmark ? '标记未播放失败:' : '标记已播放失败:', error)
+    showNotification(getNestedMessage('errors', 'markFailed', localizeServerError(error)), 'error')
+    return null
+  }
 }
 
-const markAsUnplayed = async (songId) => {
-  try {
-    await songsService.unmarkPlayed(songId)
-    await refreshSongs()
-  } catch (error) {
-      console.error('标记未播放失败:', error)
-      showNotification(getNestedMessage('errors', 'markFailed', error?.data?.message || error?.message || error?.statusMessage || getLocaleMessage('unknownError')), 'error')
-    }
+const openPlaybackConfirm = (songIds, mode) => {
+  const ids = [...new Set(songIds.filter((id) => Number.isInteger(id) && id > 0))]
+  if (!ids.length || loading.value || batchMarking.value) return
+  playbackConfirmSongIds.value = ids
+  playbackConfirmMode.value = mode
+  showPlaybackConfirm.value = true
 }
+
+const closePlaybackConfirm = () => {
+  if (batchMarking.value) return
+  showPlaybackConfirm.value = false
+  playbackConfirmSongIds.value = []
+}
+
+const markAsPlayed = (songId) => openPlaybackConfirm([songId], 'played')
+
+const markAsUnplayed = (songId) => openPlaybackConfirm([songId], 'unplayed')
+
+const confirmPlaybackChange = async () => {
+  if (batchMarking.value || !playbackConfirmSongIds.value.length) return
+  batchMarking.value = true
+  try {
+    loading.value = true
+    const songIds = [...playbackConfirmSongIds.value]
+    const updated = await executePlaybackChange(songIds, playbackConfirmMode.value === 'unplayed')
+    if (updated === null) return
+    // 选中状态统一由 executePlaybackChange 内的 refreshSongs() 清空
+    showNotification(
+      updated > 0
+        ? getNestedMessage(
+            'messages',
+            playbackConfirmMode.value === 'played' ? 'batchMarkPlayedSuccess' : 'batchMarkUnplayedSuccess',
+            updated
+          )
+        : getNestedMessage(
+            'messages',
+            playbackConfirmMode.value === 'played' ? 'batchMarkPlayedNoop' : 'batchMarkUnplayedNoop'
+          ),
+      updated > 0 ? 'success' : 'warning'
+    )
+  } catch (error) {
+    console.error('更新播放状态失败:', error)
+  } finally {
+    batchMarking.value = false
+    loading.value = false
+    showPlaybackConfirm.value = false
+    playbackConfirmSongIds.value = []
+  }
+}
+
+const batchMarkPlayed = () => openPlaybackConfirm(selectedSongs.value, 'played')
+
+const batchMarkUnplayed = () => openPlaybackConfirm(selectedSongs.value, 'unplayed')
 
 // 加入 / 移出备选池
 const toggleSongPool = async (song) => {
@@ -2137,6 +2382,7 @@ const editSong = (song) => {
     requester: song.requesterId || song.requester_id || song.requester || '',
     semester: song.semester || '',
     preferredPlayTimeId: song.preferredPlayTimeId || 'none',
+    preferredPlayDate: song.preferredPlayDate || '',
     submissionNote: song.submissionNote || '',
     submissionNotePublic: song.submissionNotePublic === true,
     submissionAnonymous: song.submissionAnonymous === true,
@@ -2146,6 +2392,12 @@ const editSong = (song) => {
     playUrl: song.playUrl || '',
     durationSeconds: song.durationSeconds || ''
   }
+  editSourceSelection.value = null
+  originalEditMusicSource.value = {
+    platform: song.musicPlatform || '',
+    musicId: song.musicId || ''
+  }
+  showSourceReplaceModal.value = false
   originalEditSubmissionNote.value = song.submissionNote || ''
   submissionNoteClearRequested.value = false
   submissionNoteClearReason.value = ''
@@ -2175,6 +2427,29 @@ const editSong = (song) => {
 const editFromDuplicate = (song) => {
   showDuplicateModal.value = false
   editSong(song)
+}
+
+const openSourceReplaceModal = () => {
+  showSourceReplaceModal.value = true
+}
+
+// 换源结果只填入编辑表单，真正生效仍需保存歌曲
+const applySourceReplacement = (payload) => {
+  editForm.value.musicPlatform = payload.musicPlatform || ''
+  editForm.value.musicId = payload.musicId || ''
+  if (payload.cover) editForm.value.cover = payload.cover
+  if (payload.durationSeconds != null) editForm.value.durationSeconds = payload.durationSeconds
+  // 旧播放地址指向原音源，换源后必须清空避免继续使用旧链接
+  editForm.value.playUrl = ''
+  editSourceSelection.value = payload.selectionToken
+    ? {
+        musicPlatform: editForm.value.musicPlatform,
+        musicId: editForm.value.musicId,
+        selectionToken: payload.selectionToken
+      }
+    : null
+  showSourceReplaceModal.value = false
+  showNotification(getNestedMessage('sourceReplace', 'applied'), 'success')
 }
 
 const saveEditSong = async () => {
@@ -2208,6 +2483,15 @@ const saveEditSong = async () => {
     }
   }
 
+  // 换源票据仅在平台与音乐 ID 未被手动改动时有效，避免服务端校验失败
+  const sourceSelection = editSourceSelection.value
+  const selectionToken =
+    sourceSelection &&
+    sourceSelection.musicPlatform === editForm.value.musicPlatform &&
+    sourceSelection.musicId === editForm.value.musicId
+      ? sourceSelection.selectionToken
+      : undefined
+
   editLoading.value = true
   try {
     const { updateSong } = adminService
@@ -2221,6 +2505,7 @@ const saveEditSong = async () => {
         editForm.value.preferredPlayTimeId === 'none'
           ? null
           : editForm.value.preferredPlayTimeId || null,
+      preferredPlayDate: editForm.value.preferredPlayDate || null,
       submissionNote: submissionNoteClearRequested.value ? null : editForm.value.submissionNote,
       submissionNotePublic: submissionNoteClearRequested.value
         ? false
@@ -2237,7 +2522,8 @@ const saveEditSong = async () => {
       durationSeconds:
         editForm.value.durationSeconds === '' || editForm.value.durationSeconds == null
           ? null
-          : Number(editForm.value.durationSeconds)
+          : Number(editForm.value.durationSeconds),
+      selectionToken
     })
 
     await refreshSongs()
@@ -2254,7 +2540,7 @@ const saveEditSong = async () => {
   }
 }
 
-// 弹窗内刷新歌曲时长（编辑模式按 songId，新增模式按平台+音乐ID）
+// 弹窗内刷新歌曲时长：换源后按新平台+音乐ID，否则编辑模式按 songId
 const refreshDurationInModal = async () => {
   const isEdit = showEditModal.value
   const form = isEdit ? editForm.value : addForm.value
@@ -2263,11 +2549,17 @@ const refreshDurationInModal = async () => {
     return
   }
 
+  const sourceChanged =
+    isEdit &&
+    (editForm.value.musicPlatform !== originalEditMusicSource.value.platform ||
+      editForm.value.musicId !== originalEditMusicSource.value.musicId)
+
   refreshDurationLoading.value = true
   try {
-    const body = isEdit
-      ? { songId: editForm.value.id }
-      : { platform: addForm.value.musicPlatform, musicId: addForm.value.musicId }
+    const body =
+      isEdit && !sourceChanged
+        ? { songId: editForm.value.id }
+        : { platform: form.musicPlatform, musicId: form.musicId }
     const result = await $fetch('/api/admin/songs/duration', {
       method: 'POST',
       body
@@ -2290,7 +2582,7 @@ const refreshDurationInModal = async () => {
   }
 }
 
-// 弹窗内刷新歌曲封面（编辑模式按 songId，新增模式按平台+音乐ID），仅填入表单随弹窗保存
+// 弹窗内刷新歌曲封面：换源后按新平台+音乐ID，仅填入表单随弹窗保存
 const refreshCoverInModal = async () => {
   const isEdit = showEditModal.value
   const form = isEdit ? editForm.value : addForm.value
@@ -2299,11 +2591,17 @@ const refreshCoverInModal = async () => {
     return
   }
 
+  const sourceChanged =
+    isEdit &&
+    (editForm.value.musicPlatform !== originalEditMusicSource.value.platform ||
+      editForm.value.musicId !== originalEditMusicSource.value.musicId)
+
   refreshCoverLoading.value = true
   try {
-    const body = isEdit
-      ? { songId: editForm.value.id }
-      : { platform: addForm.value.musicPlatform, musicId: addForm.value.musicId }
+    const body =
+      isEdit && !sourceChanged
+        ? { songId: editForm.value.id }
+        : { platform: form.musicPlatform, musicId: form.musicId }
     const result = await $fetch('/api/admin/songs/cover', {
       method: 'POST',
       body
@@ -2328,6 +2626,8 @@ const refreshCoverInModal = async () => {
 
 const cancelEditSong = () => {
   showEditModal.value = false
+  showSourceReplaceModal.value = false
+  editSourceSelection.value = null
   editForm.value = {
     id: null,
     title: '',
@@ -2335,6 +2635,7 @@ const cancelEditSong = () => {
     requester: '',
     semester: '',
     preferredPlayTimeId: 'none',
+    preferredPlayDate: '',
     submissionNote: '',
     submissionNotePublic: false,
     musicPlatform: '',
@@ -2704,6 +3005,7 @@ onMounted(async () => {
 
   document.addEventListener('click', handleClickOutside)
 
+  await loadPlatformConfig()
   await refreshSongs()
 })
 
